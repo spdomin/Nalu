@@ -1185,14 +1185,12 @@ TpetraLinearSystem::solve(
 
   TpetraLinearSolver *linearSolver = reinterpret_cast<TpetraLinearSolver *>(linearSolver_);
 
-#ifndef NDEBUG
-  //printInfo(true);
-  checkForNaN(true);
-  if (checkForZeroRow(true, false, true))
-     {
-       throw std::runtime_error("ERROR checkForZeroRow in solve()");
-     }
-#endif
+  if ( realm_.debug() ) {
+    checkForNaN(true);
+    if (checkForZeroRow(true, false, true)) {
+      throw std::runtime_error("ERROR checkForZeroRow in solve()");
+    }
+  }
 
   if (linearSolver->getConfig()->getWriteMatrixFiles()) {
     writeToFile(this->name_.c_str());
