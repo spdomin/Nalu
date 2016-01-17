@@ -38,7 +38,8 @@ namespace nalu{
 //--------------------------------------------------------------------------
 MaterialPropertys::MaterialPropertys(Realm& realm)
   : realm_(realm),
-    propertyTableName_("na")
+    propertyTableName_("na"),
+    promotionTag_("_promoted")
 {
   // nothing to do
 }
@@ -85,6 +86,18 @@ MaterialPropertys::load(const YAML::Node & node)
       }
     }
     
+    // add node parts for promotion
+    if (realm_.doPromotion_) {
+      baseTargetNames_ = targetNames_;
+      promotedTargetNames_ = targetNames_;
+      for (auto& targetName : promotedTargetNames_) {
+        targetName += promotionTag_;
+      }
+      targetNames_.insert(
+        targetNames_.end(),promotedTargetNames_.begin(), promotedTargetNames_.end()
+      );
+    }
+
     // has a table?
     if ( (*y_material_propertys).FindValue("table_file_name")) {
       (*y_material_propertys)["table_file_name"] >> propertyTableName_;

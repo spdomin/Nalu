@@ -25,12 +25,14 @@
 
 // standard c++
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 #include <stdint.h>
 
 namespace stk {
 namespace mesh {
+struct Entity;
 class Part;
 }
 namespace io {
@@ -71,6 +73,9 @@ class MasterElement;
 class PropertyEvaluator;
 class HDF5FilePtr;
 class Transfer;
+class ElementDescription;
+class PromoteElement;
+class PromotedElementIO;
 
 class Realm {
  public:
@@ -473,6 +478,31 @@ class Realm {
 
   // empty part vector should it be required
   stk::mesh::PartVector emptyPartVector_;
+
+  // Part holding added nodes
+  stk::mesh::PartVector basePartVector_;
+  stk::mesh::PartVector promotedPartVector_;
+
+  // Part holding added nodes BC
+  stk::mesh::PartVector bcPromotedPartVector_;
+
+  // element promotion tools
+  bool doPromotion_;
+  unsigned promotionOrder_;
+  double timerPromoteMesh_;
+  std::unique_ptr<ElementDescription> elem_;
+  std::unique_ptr<PromoteElement> promotion_;
+  std::unique_ptr<PromotedElementIO> promotionIO_;
+  void promote_elements();
+  void side_node_ordinals_all(
+    const stk::topology& theElemTopo,
+    unsigned face_ordinal,
+    std::vector<int>& face_node_ordinal_vec) const;
+  stk::mesh::Entity const* begin_nodes_all(stk::mesh::Entity elem) const;
+  stk::mesh::Entity const* begin_nodes_all(const stk::mesh::Bucket& b, stk::mesh::EntityId offset) const;
+  unsigned num_nodes_all(const stk::mesh::Bucket& bucket,
+    stk::mesh::EntityId id) const;
+  unsigned num_nodes_all(stk::mesh::Entity elem) const;
 
   std::vector<AuxFunctionAlgorithm *> bcDataAlg_;
 

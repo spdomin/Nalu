@@ -418,7 +418,7 @@ ShearStressTransportEquationSystem::clip_min_distance_to_wall()
      MasterElement *meSCS = realm_.get_surface_master_element(theElemTopo);
 
      // face master element
-     const int nodesPerFace = b.topology().num_nodes();
+     const int nodesPerFace = meSCS->nodesPerElement_;
      std::vector<int> face_node_ordinal_vec(nodesPerFace);
 
      const stk::mesh::Bucket::size_type length   = b.size();
@@ -427,7 +427,7 @@ ShearStressTransportEquationSystem::clip_min_distance_to_wall()
 
        // get face
        stk::mesh::Entity face = b[k];
-       int num_face_nodes = bulk_data.num_nodes(face);
+       int num_face_nodes = realm_.num_nodes_all(face);
 
        // pointer to face data
        const double * areaVec = stk::mesh::field_data(*exposedAreaVec, face);
@@ -439,10 +439,10 @@ ShearStressTransportEquationSystem::clip_min_distance_to_wall()
        // get element; its face ordinal number and populate face_node_ordinal_vec
        stk::mesh::Entity element = face_elem_rels[0];
        const int face_ordinal = bulk_data.begin_element_ordinals(face)[0];
-       theElemTopo.side_node_ordinals(face_ordinal, face_node_ordinal_vec.begin());
+               realm_.side_node_ordinals_all(theElemTopo, face_ordinal, face_node_ordinal_vec);
 
        // get the relations off of element
-       stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(element);
+       stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(element);
 
        // loop over face nodes
        for ( int ip = 0; ip < num_face_nodes; ++ip ) {

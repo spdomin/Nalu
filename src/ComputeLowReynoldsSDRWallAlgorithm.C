@@ -111,7 +111,7 @@ ComputeLowReynoldsSDRWallAlgorithm::execute()
 
     // face master element
     MasterElement *meFC = realm_.get_surface_master_element(b.topology());
-    const int nodesPerFace = b.topology().num_nodes();
+    const int nodesPerFace = meFC->nodesPerElement_;
     std::vector<int> face_node_ordinal_vec(nodesPerFace);
 
     // algorithm related; element
@@ -140,8 +140,8 @@ ComputeLowReynoldsSDRWallAlgorithm::execute()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
-      int num_face_nodes = bulk_data.num_nodes(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
+      int num_face_nodes = realm_.num_nodes_all(face);
       // sanity check on num nodes
       ThrowAssert( num_face_nodes == nodesPerFace );
       for ( int ni = 0; ni < num_face_nodes; ++ni ) {
@@ -162,10 +162,10 @@ ComputeLowReynoldsSDRWallAlgorithm::execute()
       // get element; its face ordinal number and populate face_node_ordinal_vec
       stk::mesh::Entity element = face_elem_rels[0];
       const int face_ordinal = bulk_data.begin_element_ordinals(face)[0];
-      theElemTopo.side_node_ordinals(face_ordinal, face_node_ordinal_vec.begin());
+              realm_.side_node_ordinals_all(theElemTopo, face_ordinal, face_node_ordinal_vec);
 
       // get the relations off of element
-      stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(element);
+      stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(element);
 
       // loop over face nodes
       for ( int ip = 0; ip < num_face_nodes; ++ip ) {

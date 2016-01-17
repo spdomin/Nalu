@@ -221,8 +221,8 @@ NonConformalInfo::construct_dgInfo_state()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
-      const int num_face_nodes = bulk_data.num_nodes(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
+      const int num_face_nodes = realm_.num_nodes_all(face);
       
       // sanity check on num nodes (low order, P=1, check)
       ThrowAssert( num_face_nodes == numIntPoints ); ThrowAssert( num_face_nodes == nodesPerFace );
@@ -508,8 +508,8 @@ NonConformalInfo::find_possible_face_elements()
       }
 
       // extract elem_node_relations
-      stk::mesh::Entity const* face_node_rels = bulk_data.begin_nodes(face);
-      const int num_nodes = bulk_data.num_nodes(face);
+      stk::mesh::Entity const* face_node_rels = realm_.begin_nodes_all(face);
+      const int num_nodes = realm_.num_nodes_all(face);
 
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = face_node_rels[ni];

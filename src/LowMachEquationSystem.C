@@ -103,6 +103,8 @@
 #include <TurbViscSSTAlgorithm.h>
 #include <TurbViscWaleAlgorithm.h>
 
+#include <element_promotion/PromoteElement.h>
+
 // user function
 #include <user_functions/ConvectingTaylorVortexVelocityAuxFunction.h>
 #include <user_functions/ConvectingTaylorVortexPressureAuxFunction.h>
@@ -1115,9 +1117,16 @@ MomentumEquationSystem::register_interior_algorithm(
       EffectiveDiffFluxCoeffAlgorithm *theAlg
         = new EffectiveDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, 1.0, 1.0);
       diffFluxCoeffAlgDriver_->algMap_[algType] = theAlg;
+      if (realm_.doPromotion_) {
+        itev = diffFluxCoeffAlgDriver_->algMap_.find(algType);
+        itev->second->partVec_.push_back(promoted_part(*part));
+      }
     }
     else {
       itev->second->partVec_.push_back(part);
+      if (realm_.doPromotion_) {
+        itev->second->partVec_.push_back(promoted_part(*part));
+      }
     }
 
     // deal with tvisc better? - possibly should be on EqSysManager?
@@ -1142,9 +1151,16 @@ MomentumEquationSystem::register_interior_algorithm(
           throw std::runtime_error("non-supported turb model");
       }
       tviscAlgDriver_->algMap_[algType] = theAlg;
+      if (realm_.doPromotion_) {
+        it_tv = tviscAlgDriver_->algMap_.find(algType);
+        it_tv->second->partVec_.push_back(promoted_part(*part));
+      }
     }
     else {
       it_tv->second->partVec_.push_back(part);
+      if (realm_.doPromotion_) {
+        it_tv->second->partVec_.push_back(promoted_part(*part));
+      }
     }
   }
 
@@ -2251,7 +2267,6 @@ ContinuityEquationSystem::register_open_bc(
   ScalarFieldType *pressureBC
     = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "pressure_bc"));
   stk::mesh::put_field(*pressureBC, *part );
-
   VectorFieldType &dpdxNone = dpdx_->field_of_state(stk::mesh::StateNone);
 
   // non-solver; contribution to Gjp; allow for element-based shifted

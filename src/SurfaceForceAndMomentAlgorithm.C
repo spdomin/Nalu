@@ -217,7 +217,7 @@ SurfaceForceAndMomentAlgorithm::execute()
       stk::mesh::Entity face = b[k];
 
       // face node relations
-      stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
 
       //======================================
       // gather nodal data off of face
@@ -240,10 +240,10 @@ SurfaceForceAndMomentAlgorithm::execute()
       // get element; its face ordinal number and populate face_node_ordinal_vec
       stk::mesh::Entity element = face_elem_rels[0];
       const int face_ordinal = bulk_data.begin_element_ordinals(face)[0];
-      theElemTopo.side_node_ordinals(face_ordinal, face_node_ordinal_vec.begin());
+      realm_.side_node_ordinals_all(theElemTopo, face_ordinal, face_node_ordinal_vec);
 
       // get the relations off of element
-      stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(element);
+      stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(element);
 
       for ( int ip = 0; ip < nodesPerFace; ++ip ) {
 
@@ -406,7 +406,6 @@ SurfaceForceAndMomentAlgorithm::pre_work()
 {
 
   // common
-  stk::mesh::BulkData & bulk_data = realm_.bulk_data();
   stk::mesh::MetaData & meta_data = realm_.meta_data();
   const int nDim = meta_data.spatial_dimension();
 
@@ -436,7 +435,7 @@ SurfaceForceAndMomentAlgorithm::pre_work()
       stk::mesh::Entity face = b[k];
 
       // face node relations
-      stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
 
       // pointer to face data
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec_, face);

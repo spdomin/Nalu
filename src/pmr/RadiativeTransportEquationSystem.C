@@ -1121,10 +1121,10 @@ RadiativeTransportEquationSystem::assemble_boundary_area()
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec, b, k);
 
       // face node relations for nodal gather
-      stk::mesh::Entity const * face_node_rels = b.begin_nodes(k);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(b,k);
 
       // number of nodes (equals ips) and face data
-      int num_face_ip = b.num_nodes(k);
+      int num_face_ip = realm_.num_nodes_all(b,k);
 
       for ( int ip = 0; ip < num_face_ip; ++ip ) {
 
@@ -1257,8 +1257,8 @@ RadiativeTransportEquationSystem::assemble_irradiation()
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec, b, k);
 
       // face node relations for nodal gather
-      stk::mesh::Entity const * face_node_rels = b.begin_nodes(k);
-      int num_nodes = b.num_nodes(k);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(b,k);
+      int num_nodes = realm_.num_nodes_all(b,k);
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         // gather scalar
         p_intensity[ni] = *stk::mesh::field_data(*intensity_, face_node_rels[ni]);

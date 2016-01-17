@@ -64,6 +64,7 @@ class ScalarElemDiffusionFunctor{
 
 protected:
   //Bucket and Element Data
+  Realm& realm_;
   stk::mesh::Bucket * b_;
   stk::mesh::BulkData & bulk_data_;
   stk::mesh::MetaData & meta_data_;
@@ -87,12 +88,14 @@ protected:
 
 public:
   ScalarElemDiffusionFunctor(
+      Realm& realm,
       stk::mesh::BulkData & bulk_data,
       stk::mesh::MetaData & meta_data,
       ScalarFieldType & scalarQ,
       ScalarFieldType & diffFluxCoeff,
       VectorFieldType & coordinates,
       int nDim):
+      realm_(realm),
       b_(0),
       bulk_data_(bulk_data),
       meta_data_(meta_data),
@@ -141,19 +144,30 @@ public:
 class CVFEMScalarElemDiffusionFunctor: public ScalarElemDiffusionFunctor{
 
   double * p_shape_function_;
+  double * p_scs_areav_;
+  double * p_dndx_;
+  double * p_deriv_;
+  double * p_det_j_;
 
 public:
   CVFEMScalarElemDiffusionFunctor(
+      Realm& realm,
       stk::mesh::BulkData & bulk_data,
       stk::mesh::MetaData & meta_data,
       ScalarFieldType & scalarQ,
       ScalarFieldType & diffFluxCoeff,
       VectorFieldType & coordinates,
       int nDim):
-      ScalarElemDiffusionFunctor(bulk_data, meta_data,
+      ScalarElemDiffusionFunctor(realm, bulk_data, meta_data,
         scalarQ, diffFluxCoeff, coordinates, nDim),
-      p_shape_function_(0)
-  { }
+      p_shape_function_(nullptr),
+      p_scs_areav_(nullptr),
+      p_dndx_(nullptr),
+      p_deriv_(nullptr),
+      p_det_j_(nullptr)
+  {
+
+  }
 
   virtual ~CVFEMScalarElemDiffusionFunctor(){}
 
@@ -165,30 +179,35 @@ public:
   {
     ScalarElemDiffusionFunctor::bind_data(b, meSCS, p_lhs, p_rhs, connected_nodes);
 
-    p_shape_function_ = new double[numScsIp_*nodesPerElement_];
+    // have to remove VLAs since they can become too large
+    // with P-refinement (e.g. crashes with P=4)
+
+    p_shape_function_ = new double[numScsIp_ * nodesPerElement_];
+    p_scs_areav_ = new double[numScsIp_ * nDim_];
+    p_dndx_ = new double[nDim_ * numScsIp_ * nodesPerElement_];
+    p_deriv_ = new double[nDim_ * numScsIp_ * nodesPerElement_];
+    p_det_j_ = new double[numScsIp_];
+
     meSCS_->shape_fcn(&p_shape_function_[0]);
   }
 
   virtual void release_data()
   {
+    delete[] p_det_j_;
+    delete[] p_deriv_;
+    delete[] p_dndx_;
+    delete[] p_scs_areav_;
     delete[] p_shape_function_;
   }
 
   void operator()(int elem_offset){
-    // get elem
-    const stk::mesh::Entity elem = (*b_)[elem_offset];
-
     // get nodes
-    stk::mesh::Entity const * node_rels = bulk_data_.begin_nodes(elem);
+    stk::mesh::Entity const * node_rels = realm_.begin_nodes_all(*b_,elem_offset);
 
     // temporary arrays
     double p_scalarQ[nodesPerElement_];
     double p_diffFluxCoeff[nodesPerElement_];
     double p_coordinates[nodesPerElement_*nDim_];
-    double p_scs_areav[numScsIp_*nDim_];
-    double p_dndx[nDim_*numScsIp_*nodesPerElement_];
-    double p_deriv[nDim_*numScsIp_*nodesPerElement_];
-    double p_det_j[numScsIp_];
 
     const int lhsSize = nodesPerElement_*nodesPerElement_;
     const int rhsSize = nodesPerElement_;
@@ -219,9 +238,9 @@ public:
 
     // compute geometry
     double scs_error = 0.0;
-    meSCS_->determinant(1, &p_coordinates[0], &p_scs_areav[0], &scs_error);
+    meSCS_->determinant(1, &p_coordinates[0], &p_scs_areav_[0], &scs_error);
     // compute dndx
-    meSCS_->grad_op(1, &p_coordinates[0], &p_dndx[0], &p_deriv[0], &p_det_j[0], &scs_error);
+    meSCS_->grad_op(1, &p_coordinates[0], &p_dndx_[0], &p_deriv_[0], &p_det_j_[0], &scs_error);
 
     // start assembly
     for ( int ip = 0; ip < numScsIp_; ++ip ) {
@@ -249,7 +268,7 @@ public:
         double lhsfacDiff = 0.0;
         const int offSetDnDx = nDim_*nodesPerElement_*ip + ic*nDim_;
         for ( int j = 0; j < nDim_; ++j ) {
-          lhsfacDiff += -muIp*p_dndx[offSetDnDx+j]*p_scs_areav[ip*nDim_+j];
+          lhsfacDiff += -muIp*p_dndx_[offSetDnDx+j]*p_scs_areav_[ip*nDim_+j];
         }
 
         qDiff += lhsfacDiff*p_scalarQ[ic];
@@ -274,13 +293,14 @@ class CollocationScalarElemDiffusionFunctor: public ScalarElemDiffusionFunctor{
   double * p_deriv_;
 public:
   CollocationScalarElemDiffusionFunctor(
+      Realm& realm,
       stk::mesh::BulkData & bulk_data,
       stk::mesh::MetaData & meta_data,
       ScalarFieldType & scalarQ,
       ScalarFieldType & diffFluxCoeff,
       VectorFieldType & coordinates,
       int nDim):
-      ScalarElemDiffusionFunctor(bulk_data, meta_data,
+      ScalarElemDiffusionFunctor(realm, bulk_data, meta_data,
         scalarQ, diffFluxCoeff, coordinates, nDim),
       p_deriv_(0)
   {

@@ -17,6 +17,8 @@
 #include <Simulation.h>
 #include <SolutionOptions.h>
 
+#include <element_promotion/PromoteElement.h> // for promoted_part
+
 // all concrete EquationSystem's
 #include <EnthalpyEquationSystem.h>
 #include <HeatCondEquationSystem.h>
@@ -27,6 +29,8 @@
 #include <TurbKineticEnergyEquationSystem.h>
 #include <pmr/RadiativeTransportEquationSystem.h>
 #include <mesh_motion/MeshDisplacementEquationSystem.h>
+
+
 
 #include <vector>
 
@@ -316,7 +320,7 @@ EquationSystems::register_wall_bc(
     // found the part
     const std::vector<stk::mesh::Part*> & mesh_parts = targetPart->subsets();
     for( std::vector<stk::mesh::Part*>::const_iterator i = mesh_parts.begin();
-         i != mesh_parts.end(); ++i )
+        i != mesh_parts.end(); ++i )
     {
       stk::mesh::Part * const part = *i ;
       const stk::topology the_topo = part->topology();
@@ -329,6 +333,13 @@ EquationSystems::register_wall_bc(
         EquationSystemVector::iterator ii;
         for( ii=equationSystemVector_.begin(); ii!=equationSystemVector_.end(); ++ii )
           (*ii)->register_wall_bc(part, the_topo, wallBCData);
+      }
+
+      if (realm_.doPromotion_) {
+        auto* promotedPart = promoted_part(*part);
+        EquationSystemVector::iterator ii;
+        for( ii=equationSystemVector_.begin(); ii!=equationSystemVector_.end(); ++ii )
+          (*ii)->register_wall_bc(promotedPart, part->topology(), wallBCData);
       }
     }
   }
@@ -366,6 +377,13 @@ EquationSystems::register_inflow_bc(
         for( ii=equationSystemVector_.begin(); ii!=equationSystemVector_.end(); ++ii )       
           (*ii)->register_inflow_bc(part, the_topo, inflowBCData);
       }
+
+      if (realm_.doPromotion_) {
+        auto* promotedPart = promoted_part(*part);
+        EquationSystemVector::iterator ii;
+        for( ii=equationSystemVector_.begin(); ii!=equationSystemVector_.end(); ++ii )
+          (*ii)->register_inflow_bc(promotedPart, part->topology(), inflowBCData);
+      }
     }
   }
 }
@@ -400,6 +418,13 @@ EquationSystems::register_open_bc(
         EquationSystemVector::iterator ii;
         for( ii=equationSystemVector_.begin(); ii!=equationSystemVector_.end(); ++ii )
           (*ii)->register_open_bc(part, the_topo, openBCData);
+      }
+
+      if (realm_.doPromotion_) {
+        auto* promotedPart = promoted_part(*part);
+        EquationSystemVector::iterator ii;
+        for( ii=equationSystemVector_.begin(); ii!=equationSystemVector_.end(); ++ii )
+          (*ii)->register_open_bc(promotedPart, part->topology(), openBCData);
       }
     }
   }

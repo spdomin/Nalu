@@ -56,7 +56,6 @@ void
 ComputeMdotEdgeOpenAlgorithm::execute()
 {
 
-  stk::mesh::BulkData & bulk_data = realm_.bulk_data();
   stk::mesh::MetaData & meta_data = realm_.meta_data();
 
   const int nDim = meta_data.spatial_dimension();
@@ -118,7 +117,7 @@ ComputeMdotEdgeOpenAlgorithm::execute()
       theElemTopo.side_node_ordinals(face_ordinal, face_node_ordinals.begin());
 
       // get the relations
-      stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(element);
+      stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(element);
 
       for ( int ip = 0; ip < num_face_nodes; ++ip ) {
 

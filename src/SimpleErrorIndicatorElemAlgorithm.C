@@ -110,8 +110,8 @@ SimpleErrorIndicatorElemAlgorithm::execute()
       //===============================================
       // gather nodal data; this is how we do it now..
       //===============================================
-      stk::mesh::Entity const * node_rels = b.begin_nodes(k);
-      int num_nodes = b.num_nodes(k);
+      stk::mesh::Entity const * node_rels = realm_.begin_nodes_all(b,k);
+      int num_nodes = realm_.num_nodes_all(b,k);
 
       // sanity check on num nodes
       ThrowAssert( num_nodes == nodesPerElement );

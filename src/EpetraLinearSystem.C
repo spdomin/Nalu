@@ -221,7 +221,7 @@ EpetraLinearSystem::buildEdgeToNodeGraph(const stk::mesh::PartVector & parts)
     const stk::mesh::Bucket::size_type length   = b.size();
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
       const unsigned edge_offset = k;
-      stk::mesh::Entity const * const edge_nodes = b.begin_nodes(edge_offset);
+      stk::mesh::Entity const * const edge_nodes = realm_.begin_nodes_all(b,edge_offset);
 
       // figure out the global dof ids for each dof on each node
       for(int n=0; n < numNodes; ++n) {
@@ -254,10 +254,10 @@ EpetraLinearSystem::buildFaceToNodeGraph(const stk::mesh::PartVector & parts)
     const stk::mesh::Bucket::size_type length   = b.size();
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
       const unsigned face_offset = k;
-      stk::mesh::Entity const * face_nodes = b.begin_nodes(face_offset);
+      stk::mesh::Entity const * face_nodes = realm_.begin_nodes_all(b,face_offset);
 
       // figure out the global dof ids for each dof on each node
-      const int numNodes = b.num_nodes(face_offset);
+      const int numNodes = realm_.num_nodes_all(b,face_offset);
       const int numIds = numNodes * numDof_;
       gids.resize(numIds);
       for(int n=0; n < numNodes; ++n) {
@@ -290,10 +290,10 @@ EpetraLinearSystem::buildElemToNodeGraph(const stk::mesh::PartVector & parts)
     const stk::mesh::Bucket::size_type length   = b.size();
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
       const unsigned elem_offset = k;
-      stk::mesh::Entity const * elem_nodes = b.begin_nodes(elem_offset);
+      stk::mesh::Entity const * elem_nodes = realm_.begin_nodes_all(b,elem_offset);
 
       // figure out the global dof ids for each dof on each node
-      const int numNodes = b.num_nodes(elem_offset);
+      const int numNodes = realm_.num_nodes_all(b,elem_offset);
       const int numIds = numNodes * numDof_;
       gids.resize(numIds);
       for(int n=0; n < numNodes; ++n) {
@@ -332,7 +332,7 @@ EpetraLinearSystem::buildReducedElemToNodeGraph(const stk::mesh::PartVector & pa
     const stk::mesh::Bucket::size_type length   = b.size();
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
       const unsigned elem_offset = k;
-      stk::mesh::Entity const * elem_nodes = b.begin_nodes(elem_offset);
+      stk::mesh::Entity const * elem_nodes = realm_.begin_nodes_all(b,elem_offset);
 
       // figure out the global dof ids for each dof on each node
       const int numIds = 2 * numDof_;
@@ -382,10 +382,10 @@ EpetraLinearSystem::buildFaceElemToNodeGraph(const stk::mesh::PartVector & parts
 
       // get connected element
       stk::mesh::Entity element = face_elem_rels[0];
-      const stk::mesh::Entity* elem_nodes = bulk_data.begin_nodes(element);
+      const stk::mesh::Entity* elem_nodes = realm_.begin_nodes_all(element);
 
       // figure out the global dof ids for each dof on each node
-      const int numNodes = bulk_data.num_nodes(element);
+      const int numNodes = realm_.num_nodes_all(element);
       const int numIds = numNodes * numDof_;
       gids.resize(numIds);
       for(int n=0; n < numNodes; ++n) {
@@ -406,8 +406,6 @@ EpetraLinearSystem::buildEdgeHaloNodeGraph(
 {
 
   beginLinearSystemConstruction();
-
-  stk::mesh::BulkData & bulk_data = realm_.bulk_data();
 
   int err_code(0);
 
@@ -431,8 +429,8 @@ EpetraLinearSystem::buildEdgeHaloNodeGraph(
 
       // relations
 
-      stk::mesh::Entity const* elem_nodes = bulk_data.begin_nodes(elem);
-      const int numNodes = bulk_data.num_nodes(elem);
+      stk::mesh::Entity const* elem_nodes = realm_.begin_nodes_all(elem);
+      const int numNodes = realm_.num_nodes_all(elem);
 
       const int numIds = (numNodes+1) * numDof_;
       std::vector<int> gids(numIds);

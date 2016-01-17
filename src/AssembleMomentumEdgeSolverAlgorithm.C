@@ -179,7 +179,7 @@ AssembleMomentumEdgeSolverAlgorithm::execute()
         p_rhs[i] = 0.0;
       }
 
-      stk::mesh::Entity const * edge_node_rels = b.begin_nodes(k);
+      stk::mesh::Entity const * edge_node_rels = realm_.begin_nodes_all(b,k);
 
       // pointer to edge area vector
       for ( int j = 0; j < nDim; ++j )
@@ -187,7 +187,7 @@ AssembleMomentumEdgeSolverAlgorithm::execute()
       const double tmdot = mdot[k];
 
       // sanity check on number or nodes
-      ThrowAssert( b.num_nodes(k) == 2 );
+      ThrowAssert( realm_.num_nodes_all(b,k) == 2 );
 
       // left and right nodes
       stk::mesh::Entity nodeL = edge_node_rels[0];

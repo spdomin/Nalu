@@ -49,6 +49,8 @@
 #include <TimeIntegrator.h>
 #include <SolverAlgorithmDriver.h>
 
+#include <element_promotion/PromoteElement.h>
+
 // user function
 #include <user_functions/SteadyTaylorVortexMixFracSrcElemSuppAlg.h>
 #include <user_functions/SteadyTaylorVortexMixFracSrcNodeSuppAlg.h>
@@ -356,11 +358,17 @@ MixtureFractionEquationSystem::register_interior_algorithm(
     EffectiveDiffFluxCoeffAlgorithm *theAlg
       = new EffectiveDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, lamSc, turbSc);
     diffFluxCoeffAlgDriver_->algMap_[algType] = theAlg;
+    if (realm_.doPromotion_) {
+      itev = diffFluxCoeffAlgDriver_->algMap_.find(algType);
+      itev->second->partVec_.push_back(promoted_part(*part));
+    }
   }
   else {
     itev->second->partVec_.push_back(part);
+    if (realm_.doPromotion_) {
+      itev->second->partVec_.push_back(promoted_part(*part));
+    }
   }
-
 }
 
 //--------------------------------------------------------------------------
@@ -477,6 +485,10 @@ MixtureFractionEquationSystem::register_open_bc(
   // register boundary data; mixFrac_bc
   ScalarFieldType *theBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "open_mixFrac_bc"));
   stk::mesh::put_field(*theBcField, *part);
+//  if(realm_.doPromotion_) {
+//    auto promotedPart = meta_data.get_part("block_1_promoted");
+//    stk::mesh::put_field(*theBcField,*promotedPart);
+//  }
 
   // extract the value for user specified mixFrac and save off the AuxFunction
   OpenUserData userData = openBCData.userData_;
