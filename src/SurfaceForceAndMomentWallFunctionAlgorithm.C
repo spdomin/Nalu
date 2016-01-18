@@ -135,7 +135,6 @@ SurfaceForceAndMomentWallFunctionAlgorithm::execute()
   if ( !processMe )
     return;
 
-  stk::mesh::BulkData & bulk_data = realm_.bulk_data();
   stk::mesh::MetaData & meta_data = realm_.meta_data();
 
   const int nDim = meta_data.spatial_dimension();
@@ -234,7 +233,7 @@ SurfaceForceAndMomentWallFunctionAlgorithm::execute()
       stk::mesh::Entity face = b[k];
 
       // face node relations
-      stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
 
       //======================================
       // gather nodal data off of face
@@ -416,7 +415,6 @@ SurfaceForceAndMomentWallFunctionAlgorithm::pre_work()
 {
 
   // common
-  stk::mesh::BulkData & bulk_data = realm_.bulk_data();
   stk::mesh::MetaData & meta_data = realm_.meta_data();
   const int nDim = meta_data.spatial_dimension();
 
@@ -446,7 +444,7 @@ SurfaceForceAndMomentWallFunctionAlgorithm::pre_work()
       stk::mesh::Entity face = b[k];
 
       // face node relations
-      stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
 
       // pointer to face data
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec_, face);

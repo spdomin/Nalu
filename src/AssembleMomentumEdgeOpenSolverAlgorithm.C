@@ -72,7 +72,6 @@ void
 AssembleMomentumEdgeOpenSolverAlgorithm::execute()
 {
 
-  stk::mesh::BulkData & bulk_data = realm_.bulk_data();
   stk::mesh::MetaData & meta_data = realm_.meta_data();
 
   const int nDim = meta_data.spatial_dimension();
@@ -159,8 +158,8 @@ AssembleMomentumEdgeOpenSolverAlgorithm::execute()
       theElemTopo.side_node_ordinals(face_ordinal, face_node_ordinals.begin());
 
       // get the relations; populate connected nodes
-      stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(element);
-      int num_nodes = bulk_data.num_nodes(element);
+      stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(element);
+      int num_nodes = realm_.num_nodes_all(element);
       // sanity check on num nodes
       ThrowAssert( num_nodes == nodesPerElement );
       for ( int ni = 0; ni < num_nodes; ++ni ) {

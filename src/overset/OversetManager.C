@@ -288,8 +288,8 @@ OversetManager::define_overset_bounding_box()
       stk::mesh::Entity element = b[k];
 
       // extract elem_node_relations
-      stk::mesh::Entity const* elem_node_rels = bulkData_->begin_nodes(element);
-      const int num_nodes = bulkData_->num_nodes(element);
+      stk::mesh::Entity const* elem_node_rels = realm_.begin_nodes_all(element);
+      const int num_nodes = realm_.num_nodes_all(element);
 
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = elem_node_rels[ni];
@@ -407,8 +407,8 @@ OversetManager::define_overset_bounding_boxes()
       }
         
       // extract elem_node_relations
-      stk::mesh::Entity const* elem_node_rels = bulkData_->begin_nodes(element);
-      const int num_nodes = bulkData_->num_nodes(element);
+      stk::mesh::Entity const* elem_node_rels = realm_.begin_nodes_all(element);
+      const int num_nodes = realm_.num_nodes_all(element);
         
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = elem_node_rels[ni];
@@ -473,8 +473,8 @@ OversetManager::define_background_bounding_boxes()
       }
         
       // extract elem_node_relations
-      stk::mesh::Entity const* elem_node_rels = bulkData_->begin_nodes(element);
-      const int num_nodes = bulkData_->num_nodes(element);
+      stk::mesh::Entity const* elem_node_rels = realm_.begin_nodes_all(element);
+      const int num_nodes = realm_.num_nodes_all(element);
         
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = elem_node_rels[ni];
@@ -945,5 +945,5 @@ OversetManager::complete_search(
   }  
 }
 
-} // namespace naluUnit
+} // namespace nalu
 } // namespace Sierra

@@ -94,11 +94,11 @@ AssembleScalarElemDiffSolverAlgorithm::execute()
   ScalarElemDiffusionFunctor * diffusionOperator;
 
   if (useCollocation_){
-    diffusionOperator = new CollocationScalarElemDiffusionFunctor(bulk_data, meta_data,
+    diffusionOperator = new CollocationScalarElemDiffusionFunctor(realm_,bulk_data, meta_data,
       scalarQNp1, *diffFluxCoeff_, *coordinates_, nDim);
   }
   else{
-    diffusionOperator = new CVFEMScalarElemDiffusionFunctor(bulk_data, meta_data,
+    diffusionOperator = new CVFEMScalarElemDiffusionFunctor(realm_, bulk_data, meta_data,
       scalarQNp1, *diffFluxCoeff_, *coordinates_, nDim);
    }
 

@@ -106,7 +106,7 @@ ComputeSSTMaxLengthScaleElemAlgorithm::execute()
       stk::mesh::Entity elem = b[k];
 
       // node relations
-      stk::mesh::Entity const * node_rels = bulk_data.begin_nodes(elem);
+      stk::mesh::Entity const * node_rels = realm_.begin_nodes_all(elem);
 
       // compute max edge length
       for ( int ip = 0; ip < numScsIp; ++ip ) {

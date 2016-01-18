@@ -29,6 +29,7 @@ struct nodalGradientElem{
 private:
 
   //Bucket and Element Data
+  Realm& realm_;
   stk::mesh::Bucket & b_;
   MasterElement & meSCS_;
   const double * p_shape_function_;
@@ -48,11 +49,12 @@ private:
   const int nodesPerElement_;
 
 public:
-  nodalGradientElem(stk::mesh::Bucket & b, MasterElement & meSCS,
+  nodalGradientElem(Realm& realm, stk::mesh::Bucket & b, MasterElement & meSCS,
       double * p_shape_function,
       ScalarFieldType & scalarQ, VectorFieldType & dqdx,
       ScalarFieldType & dualNodalVolume, VectorFieldType & coordinates,
       int nDim):
+      realm_(realm),
       b_(b),
       meSCS_(meSCS),
       p_shape_function_(p_shape_function),
@@ -71,8 +73,8 @@ public:
     //===============================================
     // gather nodal data; this is how we do it now..
     //===============================================
-    stk::mesh::Entity const * node_rels = b_.begin_nodes(elem_offset);
-    const int num_nodes = b_.num_nodes(elem_offset);
+    stk::mesh::Entity const * node_rels = realm_.begin_nodes_all(b_,elem_offset);
+    const int num_nodes = realm_.num_nodes_all(b_,elem_offset);
 
     // temporary arrays
     double p_scalarQ[nodesPerElement_];
@@ -197,7 +199,7 @@ AssembleNodalGradElemAlgorithm::execute()
     else
       meSCS->shape_fcn(&p_shape_function[0]);
 
-    nodalGradientElem nodeGradFunctor(b, *meSCS, p_shape_function, *scalarQ_, *dqdx_, *dualNodalVolume_, *coordinates_, nDim);
+    nodalGradientElem nodeGradFunctor(realm_, b, *meSCS, p_shape_function, *scalarQ_, *dqdx_, *dualNodalVolume_, *coordinates_, nDim);
 
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
       //WARNING: do not thread this functor.  It is not thread-safe because each element scatters to all of its nodes.

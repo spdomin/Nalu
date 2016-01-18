@@ -110,8 +110,8 @@ AssembleNodalGradElemContactAlgorithm::populate_halo_state()
       // extract element mesh object and global id for face node
       stk::mesh::Entity elem  = infoObject->owningElement_;
 
-      stk::mesh::Entity const *elem_node_rels = bulk_data.begin_nodes(elem);
-      const unsigned num_nodes = bulk_data.num_nodes(elem);
+      stk::mesh::Entity const *elem_node_rels = realm_.begin_nodes_all(elem);
+      const unsigned num_nodes = realm_.num_nodes_all(elem);
       
       // now load the elemental values for future interpolation
       for ( unsigned ni = 0; ni < num_nodes; ++ni ) {
@@ -224,8 +224,8 @@ AssembleNodalGradElemContactAlgorithm::add_elem_gradq()
       theElemTopo.side_node_ordinals(face_ordinal, face_node_ordinals.begin());
       
       // concentrate on loading up the nodal coordinates/scalarQ for the extruded element
-      stk::mesh::Entity const * face_node_rels = b.begin_nodes(k);
-      int num_nodes = b.num_nodes(k);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(b,k);
+      int num_nodes = realm_.num_nodes_all(b,k);
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = face_node_rels[ni];
         const double * coords = stk::mesh::field_data(*coordinates, node);
@@ -272,7 +272,7 @@ AssembleNodalGradElemContactAlgorithm::add_elem_gradq()
       }
       
       // deal with edges on the exposed face and each
-      stk::mesh::Entity const* elem_node_rels = bulk_data.begin_nodes(element);
+      stk::mesh::Entity const* elem_node_rels = realm_.begin_nodes_all(element);
       
       // face edge relations; if this is 2D then the face is a edge and size is unity
       stk::mesh::Entity const* face_edge_rels = bulk_data.begin_edges(face);

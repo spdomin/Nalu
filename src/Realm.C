@@ -74,6 +74,13 @@
 // tables
 #include <tabular_props/HDF5FilePtr.h>
 
+// element promotion
+#include <element_promotion/PromoteElement.h>
+#include <element_promotion/PromotedElementIO.h>
+#include <element_promotion/ElementDescription.h>
+#include <element_promotion/MasterElementHO.h>
+#include <nalu_make_unique.h>
+
 // transfer
 #include <xfer/Transfer.h>
 
@@ -208,7 +215,13 @@ namespace nalu{
     autoDecompType_("None"),
     activateAura_(false),
     activateMemoryDiagnostic_(false),
-    supportInconsistentRestart_(false)
+    supportInconsistentRestart_(false),
+    doPromotion_(false),
+    promotionOrder_(1),
+    timerPromoteMesh_(0.0),
+    elem_(nullptr),
+    promotion_(nullptr),
+    promotionIO_(nullptr)
 {
   // deal with specialty options that live off of the realm; 
   // choose to do this now rather than waiting for the load stage
@@ -389,6 +402,15 @@ Realm::initialize()
   // initialize adaptivity - note: must be done before field registration
   setup_adaptivity();
 
+  // separate out base and promoted parts
+  if (doPromotion_) {
+    elem_ = ElementDescription::create(meta_data().spatial_dimension(), promotionOrder_);
+    basePartVector_ = metaData_->get_mesh_parts();
+    for (auto* part : basePartVector_) {
+      promotedPartVector_.push_back(&metaData_->declare_part(promote_part_name(part->name())));
+    }
+  }
+
   // field registration
   setup_nodal_fields();
   setup_edge_fields();
@@ -431,6 +453,9 @@ Realm::initialize()
   // if those exist on the input mesh file.
   ioBroker_->populate_field_data();
 
+  if (doPromotion_)
+    promote_elements();
+
   // manage NaluGlobalId for linear system
   set_global_id();
 
@@ -438,7 +463,7 @@ Realm::initialize()
   if ( checkForMissingBcs_ )
     enforce_bc_on_exposed_faces();
 
-  // output and restart files
+   // output and restart files
   create_output_mesh();
   create_restart_mesh();
 
@@ -531,6 +556,11 @@ Realm::load(const YAML::Node & node)
 
   // determine if edges are required and whether or not stk handles this
   get_if_present(node, "use_edges", realmUsesEdges_, realmUsesEdges_);
+
+  get_if_present(node, "polynomial_order", promotionOrder_, promotionOrder_);
+  if (promotionOrder_ > 1) {
+    doPromotion_ = true;
+  }
 
   // let everyone know about core algorithm
   if ( realmUsesEdges_ ) {
@@ -699,8 +729,10 @@ void
 Realm::setup_edge_fields()
 {
   // loop over all material props targets and register edge fields
-  std::vector<std::string> targetNames = materialPropertys_.targetNames_;
-  equationSystems_.register_edge_fields(targetNames);
+  if (!doPromotion_) {
+    std::vector<std::string> targetNames = materialPropertys_.targetNames_;
+    equationSystems_.register_edge_fields(targetNames);
+  }
 }
 //--------------------------------------------------------------------------
 //-------- setup_element_fields --------------------------------------------
@@ -710,6 +742,9 @@ Realm::setup_element_fields()
 {
   // loop over all material props targets and register element fields
   std::vector<std::string> targetNames = materialPropertys_.targetNames_;
+  if (doPromotion_) {
+    targetNames = materialPropertys_.baseTargetNames_;
+  }
   equationSystems_.register_element_fields(targetNames);
 }
 
@@ -727,6 +762,9 @@ Realm::setup_interior_algorithms()
   }
   // loop over all material props targets and register interior algs
   std::vector<std::string> targetNames = materialPropertys_.targetNames_;
+  if (doPromotion_) {
+    targetNames = materialPropertys_.baseTargetNames_;
+  }
   equationSystems_.register_interior_algorithm(targetNames);
 }
 
@@ -789,21 +827,29 @@ Realm::setup_bc()
   // loop over all bcs and register
   for (size_t ibc = 0; ibc < boundaryConditions_.size(); ++ibc) {
     BoundaryCondition& bc = *boundaryConditions_[ibc];
+    std::string baseName = bc.targetName_;
+
     switch(bc.theBcType_) {
       case WALL_BC:
-        equationSystems_.register_wall_bc(bc.targetName_, *reinterpret_cast<const WallBoundaryConditionData *>(&bc));
+      {
+        equationSystems_.register_wall_bc(baseName, *reinterpret_cast<const WallBoundaryConditionData *>(&bc));
         break;
+      }
       case INFLOW_BC:
-        equationSystems_.register_inflow_bc(bc.targetName_, *reinterpret_cast<const InflowBoundaryConditionData *>(&bc));
+      {
+        equationSystems_.register_inflow_bc(baseName, *reinterpret_cast<const InflowBoundaryConditionData *>(&bc));
         break;
+      }
       case OPEN_BC:
-        equationSystems_.register_open_bc(bc.targetName_, *reinterpret_cast<const OpenBoundaryConditionData *>(&bc));
+      {
+        equationSystems_.register_open_bc(baseName, *reinterpret_cast<const OpenBoundaryConditionData *>(&bc));
         break;
+      }
       case CONTACT_BC:
-        equationSystems_.register_contact_bc(bc.targetName_, *reinterpret_cast<const ContactBoundaryConditionData *>(&bc));
+        equationSystems_.register_contact_bc(baseName, *reinterpret_cast<const ContactBoundaryConditionData *>(&bc));
         break;
       case SYMMETRY_BC:
-        equationSystems_.register_symmetry_bc(bc.targetName_, *reinterpret_cast<const SymmetryBoundaryConditionData *>(&bc));
+        equationSystems_.register_symmetry_bc(baseName, *reinterpret_cast<const SymmetryBoundaryConditionData *>(&bc));
         break;
       case PERIODIC_BC:
         equationSystems_.register_periodic_bc(
@@ -898,6 +944,64 @@ Realm::setup_initial_conditions()
             AuxFunctionAlgorithm *auxGen
               = new AuxFunctionAlgorithm( *this, targetPart,
                                           fieldWithState, theGenFunc, stk::topology::NODE_RANK);
+            initCondAlg_.push_back(auxGen);
+
+          }
+        }
+        break;
+
+        case FUNCTION_UD:
+        {
+          const UserFunctionInitialConditionData& fcnIC = *reinterpret_cast<const UserFunctionInitialConditionData *>(&initCond);
+          equationSystems_.register_initial_condition_fcn(targetPart, fcnIC);
+        }
+        break;
+
+        case USER_SUB_UD:
+          throw std::runtime_error("Realm::setup_initial_conditions: USER_SUB not supported: ");
+
+        case UserDataType_END:
+          break;
+
+        default:
+          NaluEnv::self().naluOutputP0() << "Realm::setup_initial_conditions: unknown type: " << initCond.theIcType_ << std::endl;
+          throw std::runtime_error("Realm::setup_initial_conditions: unknown type:");
+      }
+    }
+  }
+
+  // loop over all ics and register
+  for (size_t j_ic = 0; j_ic < initialConditions_.size(); ++j_ic) {
+    InitialCondition& initCond = *initialConditions_[j_ic];
+
+    const std::vector<std::string> targetNames = initCond.targetNames_;
+
+    for (size_t itarget=0; itarget < targetNames.size(); ++itarget) {
+
+      // target need not be subsetted since nothing below will depend on topo
+      stk::mesh::Part *targetPart = metaData_->get_part(targetNames[itarget]+"_promoted");
+
+      switch(initCond.theIcType_) {
+
+        case CONSTANT_UD:
+        {
+          const ConstantInitialConditionData& genIC = *reinterpret_cast<const ConstantInitialConditionData *>(&initCond);
+          ThrowAssert(genIC.data_.size() == genIC.fieldNames_.size());
+          for (size_t ifield = 0; ifield < genIC.fieldNames_.size(); ++ifield) {
+
+            std::vector<double>  genSpec = genIC.data_[ifield];
+            stk::mesh::FieldBase *field = stk::mesh::get_field_by_name(genIC.fieldNames_[ifield], *metaData_);
+            ThrowAssert(field);
+
+            stk::mesh::FieldBase *fieldWithState = ( field->number_of_states() > 1 )
+                    ? field->field_state(stk::mesh::StateNP1)
+                        : field->field_state(stk::mesh::StateNone);
+
+            std::vector<double> userGen = genSpec;
+            ConstantAuxFunction *theGenFunc = new ConstantAuxFunction(0, genSpec.size(), userGen);
+            AuxFunctionAlgorithm *auxGen
+            = new AuxFunctionAlgorithm( *this, targetPart,
+              fieldWithState, theGenFunc, stk::topology::NODE_RANK);
             initCondAlg_.push_back(auxGen);
 
           }
@@ -1844,6 +1948,22 @@ Realm::create_output_mesh()
 
     resultsFileIndex_ = ioBroker_->create_output_mesh( oname, stk::io::WRITE_RESULTS, *outputInfo_->outputPropertyManager_);
 
+    // create the io object for outputting linear subelements from the higher order promoted elems
+    if (doPromotion_) {
+      auto* coords = metaData_->get_field<VectorFieldType>(stk::topology::NODE_RANK, "coordinates");
+      auto pos = oname.find_last_of('/');
+      std::string tag = "fine_";
+      auto fineOutputName  = oname;
+      fineOutputName.insert(pos+1,tag);
+      promotionIO_ = make_unique<PromotedElementIO>(
+        *promotion_,
+        *metaData_,
+        *bulkData_,
+        *coords,
+        fineOutputName
+      );
+    }
+
 #if defined (NALU_USES_PERCEPT)
 
   if (solutionOptions_->useAdapter_ && outputInfo_->meshAdapted_) {
@@ -1878,6 +1998,16 @@ Realm::create_output_mesh()
         // For now, just using the name of the stk field
         ioBroker_->add_field(resultsFileIndex_, *theField, varName);
       }
+    }
+
+    // add all of the output fields for the promoted element IO
+    // has to be added in a batch for now
+    if (doPromotion_) {
+      std::vector<stk::mesh::FieldBase*> outputFields;
+       for (auto& varName : outputInfo_->outputFieldNameSet_) {
+        outputFields.push_back(stk::mesh::get_field_by_name(varName, *metaData_));
+      }
+       promotionIO_->add_fields(outputFields);
     }
 
     // reset this flag
@@ -2260,6 +2390,108 @@ Realm::process_mesh_motion()
       }
     }
   }
+}
+
+//--------------------------------------------------------------------------
+//-------- promote_element -------------------------------------------------
+//--------------------------------------------------------------------------
+void
+Realm::promote_elements()
+{
+  auto timeA = MPI_Wtime();
+  promotion_ = make_unique<PromoteElement>(*elem_);
+  auto* coords = metaData_->get_field<VectorFieldType>(stk::topology::NODE_RANK, "coordinates");
+
+  bulkData_->modification_begin();
+  promotion_->promote_elements(
+    basePartVector_,
+    *coords,
+    *bulkData_,
+    promotedPartVector_
+  );
+  bulkData_->modification_end();
+
+  auto timeB = MPI_Wtime();
+  timerPromoteMesh_ = timeB-timeA;
+
+  std::vector<size_t> counts;
+  stk::mesh::comm_mesh_counts(*bulkData_ , counts);
+
+  NaluEnv::self().naluOutputP0()
+      << "Element promotion completed in " << timerPromoteMesh_
+      << "s, from " << nodeCount_ << " nodes to " << counts[0] << std::endl;
+}
+
+//--------------------------------------------------------------------------
+//-------- side_node_ordinals_all ------------------------------------------
+//--------------------------------------------------------------------------
+void
+Realm::side_node_ordinals_all(
+  const stk::topology& theElemTopo,
+  unsigned face_ordinal,
+  std::vector<int>& face_node_ordinal_vec) const
+{
+  if (doPromotion_) {
+    for (unsigned j = 0; j < face_node_ordinal_vec.size();++j) {
+      face_node_ordinal_vec[j] = elem_->sideOrdinalMap[face_ordinal][j];
+    }
+  }
+  else {
+    theElemTopo.side_node_ordinals(face_ordinal, face_node_ordinal_vec.begin());
+  }
+}
+//--------------------------------------------------------------------------
+//-------- begin_nodes_all -------------------------------------------------
+//--------------------------------------------------------------------------
+stk::mesh::Entity const*
+Realm::begin_nodes_all(const stk::mesh::Bucket& bucket,
+  stk::mesh::EntityId id) const
+{
+  if (doPromotion_) {
+    return (promotion_->begin_nodes_all(bucket,id));
+  }
+  return (bucket.begin_nodes(id));
+}
+
+stk::mesh::Entity const*
+Realm::begin_nodes_all(stk::mesh::Entity element) const
+{
+  if (doPromotion_) {
+    return (promotion_->begin_nodes_all(element));
+  }
+  return (bulkData_->begin_nodes(element));
+}
+
+//--------------------------------------------------------------------------
+//-------- num_nodes_all ---------------------------------------------------
+//--------------------------------------------------------------------------
+unsigned
+Realm::num_nodes_all(const stk::mesh::Bucket& bucket,
+  stk::mesh::EntityId id) const
+{
+  if (doPromotion_) {
+    if (bucket.topology().rank() == metaData_->side_rank()) {
+      return (std::pow(elem_->nodes1D, elem_->dimension-1));
+    }
+    else {
+      return (elem_->nodesPerElement);
+    }
+  }
+  return (bucket.num_nodes(id));
+}
+
+unsigned
+Realm::num_nodes_all(stk::mesh::Entity element) const
+{
+  if (doPromotion_) {
+    if (bulkData_->bucket(element).topology().rank()  == metaData_->side_rank()) {
+      return (std::pow(elem_->nodes1D, elem_->dimension-1));
+    }
+    else {
+      return (elem_->nodesPerElement);
+    }
+  }
+  return (bulkData_->num_nodes(element));
 }
 
 //--------------------------------------------------------------------------
@@ -3145,6 +3377,10 @@ Realm::provide_output()
       // not set up for globals
       ioBroker_->process_output_request(resultsFileIndex_, currentTime);
       equationSystems_.provide_output();
+
+      // write to a separate subelement output
+      if (doPromotion_)
+        promotionIO_->write_database_data(currentTime);
     }
 
     const double stop_time = stk::cpu_time();
@@ -3562,9 +3798,15 @@ Realm::get_volume_master_element(
     switch ( theTopo.value() ) {
 
       case stk::topology::HEX_8:
-        theElem = new HexSCV();
+      {
+        if (!doPromotion_) {
+          theElem = new HexSCV();
+        }
+        else {
+          theElem = new HigherOrderHexSCV(*elem_);
+        }
         break;
-
+      }
       case stk::topology::HEX_27:
         theElem = new Hex27SCV();
         break;
@@ -3582,9 +3824,15 @@ Realm::get_volume_master_element(
         break;
 
       case stk::topology::QUAD_4_2D:
-        theElem = new Quad2DSCV();
+      {
+        if (!doPromotion_) {
+          theElem = new Quad2DSCV();
+        }
+        else {
+          theElem = new HigherOrderQuad2DSCV(*elem_);
+        }
         break;
-
+      }
       case stk::topology::QUAD_9_2D:
         theElem = new Quad92DSCV();
         break;
@@ -3626,9 +3874,15 @@ Realm::get_surface_master_element(
     switch ( theTopo.value() ) {
 
       case stk::topology::HEX_8:
-        theElem = new HexSCS();
+      {
+        if(!doPromotion_) {
+          theElem = new HexSCS();
+        }
+        else {
+          theElem = new HigherOrderHexSCS(*elem_);
+        }
         break;
-
+      }
       case stk::topology::HEX_27:
         theElem = new Hex27SCS();
         break;
@@ -3646,8 +3900,15 @@ Realm::get_surface_master_element(
         break;
 
       case stk::topology::QUAD_4:
-        theElem =  new Quad3DSCS();
+      {
+        if(!doPromotion_) {
+          theElem = new Quad3DSCS();
+        }
+        else {
+          theElem = new HigherOrderQuad3DSCS(*elem_);
+        }
         break;
+      }
 
       case stk::topology::QUAD_9:
         theElem =  new Quad93DSCS();
@@ -3658,9 +3919,15 @@ Realm::get_surface_master_element(
         break;
 
       case stk::topology::QUAD_4_2D:
-        theElem =  new Quad2DSCS();
+      {
+        if(!doPromotion_) {
+          theElem = new Quad2DSCS();
+        }
+        else {
+          theElem = new HigherOrderQuad2DSCS(*elem_);
+        }
         break;
-
+      }
       case stk::topology::QUAD_9_2D:
         theElem =  new Quad92DSCS();
         break;
@@ -3670,9 +3937,15 @@ Realm::get_surface_master_element(
         break;
 
       case stk::topology::LINE_2:
-        theElem = new Edge2DSCS();
+      {
+        if(!doPromotion_) {
+          theElem = new Edge2DSCS();
+        }
+        else {
+          theElem = new HigherOrderEdge2DSCS(*elem_);
+        }
         break;
-
+      }
       case stk::topology::LINE_3:
         theElem = new Edge32DSCS();
         break;

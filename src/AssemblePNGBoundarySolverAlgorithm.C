@@ -131,8 +131,8 @@ AssemblePNGBoundarySolverAlgorithm::execute()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = b.begin_nodes(k);
-      int num_face_nodes = b.num_nodes(k);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(b,k);
+      int num_face_nodes = realm_.num_nodes_all(b,k);
       // sanity check on num nodes
       ThrowAssert( num_face_nodes == nodesPerFace );
       for ( int ni = 0; ni < num_face_nodes; ++ni ) {

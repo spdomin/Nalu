@@ -69,7 +69,6 @@ void
 AssembleRadTransWallSolverAlgorithm::execute()
 {
 
-  stk::mesh::BulkData & bulk_data = realm_.bulk_data();
   stk::mesh::MetaData & meta_data = realm_.meta_data();
 
   const int nDim = meta_data.spatial_dimension();
@@ -147,7 +146,7 @@ AssembleRadTransWallSolverAlgorithm::execute()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
       for ( int ni = 0; ni < nodesPerFace; ++ni ) {
         stk::mesh::Entity node = face_node_rels[ni];
         connected_nodes[ni] = node;

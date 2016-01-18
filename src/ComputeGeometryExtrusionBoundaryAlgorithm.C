@@ -142,8 +142,8 @@ ComputeGeometryExtrusionBoundaryAlgorithm::execute()
       theElemTopo.side_node_ordinals(face_ordinal, face_node_ordinals.begin());
       
       // concentrate on loading up the nodal coordinates for the extruded element
-      stk::mesh::Entity const * face_node_rels = b.begin_nodes(k);
-      int num_nodes = b.num_nodes(k);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(b,k);
+      int num_nodes = realm_.num_nodes_all(b,k);
       for ( int ni = 0; ni < num_nodes; ++ni ) {
 	stk::mesh::Entity node = face_node_rels[ni];
 	const double * coords = stk::mesh::field_data(*coordinates, node);
@@ -182,7 +182,7 @@ ComputeGeometryExtrusionBoundaryAlgorithm::execute()
       }
       
       // deal with edges on the exposed face... 
-      stk::mesh::Entity const* elem_node_rels = bulk_data.begin_nodes(element);
+      stk::mesh::Entity const* elem_node_rels = realm_.begin_nodes_all(element);
       
       // face edge relations; if this is 2D then the face is a edge and size is unity
       stk::mesh::Entity const* face_edge_rels = bulk_data.begin_edges(face);

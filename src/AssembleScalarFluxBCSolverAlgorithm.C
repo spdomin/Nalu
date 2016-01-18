@@ -66,7 +66,6 @@ void
 AssembleScalarFluxBCSolverAlgorithm::execute()
 {
 
-  stk::mesh::BulkData & bulk_data = realm_.bulk_data();
   stk::mesh::MetaData & meta_data = realm_.meta_data();
 
   const int nDim = meta_data.spatial_dimension();
@@ -142,8 +141,8 @@ AssembleScalarFluxBCSolverAlgorithm::execute()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = bulk_data .begin_nodes(face);
-      int num_face_nodes = bulk_data.num_nodes(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
+      int num_face_nodes = realm_.num_nodes_all(face);
       // sanity check on num nodes
       ThrowAssert( num_face_nodes == nodesPerFace );
       for ( int ni = 0; ni < num_face_nodes; ++ni ) {

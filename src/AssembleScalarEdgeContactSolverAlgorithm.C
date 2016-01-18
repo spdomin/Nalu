@@ -103,7 +103,6 @@ AssembleScalarEdgeContactSolverAlgorithm::execute()
 {
 
   stk::mesh::MetaData & meta_data = realm_.meta_data();
-  stk::mesh::BulkData & bulk_data = realm_.bulk_data();
 
   const int nDim = meta_data.spatial_dimension();
 
@@ -205,8 +204,8 @@ AssembleScalarEdgeContactSolverAlgorithm::execute()
       // extract element mesh object and global id for face node
       stk::mesh::Entity elem  = infoObject->owningElement_;
 
-      stk::mesh::Entity const* elem_node_rels = bulk_data.begin_nodes(elem);
-      const int num_nodes = bulk_data.num_nodes(elem);
+      stk::mesh::Entity const* elem_node_rels = realm_.begin_nodes_all(elem);
+      const int num_nodes = realm_.num_nodes_all(elem);
 
       // now load the elemental values for future interpolation; fill in connected nodes
       connected_nodes[0] = infoObject->faceNode_;

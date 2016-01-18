@@ -54,9 +54,12 @@ public:
   Realm &realm_;
   MaterialPropertyVector materialPropertyVector_;
   std::string propertyTableName_;
+  std::string promotionTag_;
 
   // vectors and maps required to manage full set of options
   std::vector<std::string> targetNames_;
+  std::vector<std::string> baseTargetNames_;
+  std::vector<std::string> promotedTargetNames_;
   std::map<std::string, double> universalConstantMap_;
   std::map<PropertyIdentifier, MaterialPropertyData*> propertyDataMap_;
   std::map<std::string, ReferencePropertyData*> referencePropertyDataMap_; /* defines overall species ordering */

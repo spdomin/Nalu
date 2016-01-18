@@ -54,8 +54,11 @@
 
 // user functions
 #include <user_functions/SteadyThermalContactAuxFunction.h>
+#include <user_functions/SteadyThermalContact3DAuxFunction.h>
 #include <user_functions/SteadyThermalContactSrcNodeSuppAlg.h>
+#include <user_functions/SteadyThermalContact3DSrcNodeSuppAlg.h>
 #include <user_functions/SteadyThermalContactSrcElemSuppAlg.h>
+#include <user_functions/SteadyThermalContact3DSrcElemSuppAlg.h>
 
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
@@ -350,8 +353,14 @@ HeatCondEquationSystem::register_interior_algorithm(
             = new SteadyThermalContactSrcNodeSuppAlg(realm_);
           theAlg->supplementalAlg_.push_back(theSrc);
         }
+        else if (sourceName == "steady_3d_thermal" ) {
+          SteadyThermalContact3DSrcNodeSuppAlg *theSrc
+            = new SteadyThermalContact3DSrcNodeSuppAlg(realm_);
+          theAlg->supplementalAlg_.push_back(theSrc);
+        }
         else {
-          throw std::runtime_error("HeatCondEquationSystem::only steady_2d_thermal src term is supported");
+          throw std::runtime_error(
+            "HeatCondEquationSystem::only steady_2d_thermal/steady3d_thermal src term is supported");
         }
       }
     }
@@ -382,8 +391,14 @@ HeatCondEquationSystem::register_interior_algorithm(
             = new SteadyThermalContactSrcElemSuppAlg(realm_);
           theAlg->supplementalAlg_.push_back(theSrc);
         }
+        else if (sourceName == "steady_3d_thermal" ) {
+          SteadyThermalContact3DSrcElemSuppAlg *theSrc
+            = new SteadyThermalContact3DSrcElemSuppAlg(realm_);
+          theAlg->supplementalAlg_.push_back(theSrc);
+        }
         else {
-          throw std::runtime_error("HeatCondEquationSystem::only steady_2d_thermal element src term is supported");
+          throw std::runtime_error(
+            "HeatCondEquationSystem::only steady_2d_thermal/steady3d_thermal  element src term is supported");
         }
       }
     }
@@ -478,8 +493,11 @@ HeatCondEquationSystem::register_wall_bc(
       if ( fcnName == "steady_2d_thermal" ) {
         theAuxFunc = new SteadyThermalContactAuxFunction();
       }
+      else if ( fcnName == "steady_3d_thermal" ) {
+        theAuxFunc = new SteadyThermalContact3DAuxFunction();
+      }
       else {
-        throw std::runtime_error("Only steady_2d_thermal user functions supported");
+        throw std::runtime_error("Only steady_2d_thermal/steady_3d_thermal user functions supported");
       }
     }
     
@@ -997,8 +1015,13 @@ HeatCondEquationSystem::register_initial_condition_fcn(
       // create the function
       theAuxFunc = new SteadyThermalContactAuxFunction();      
     }
+    else if ( fcnName == "steady_3d_thermal" ) {
+      theAuxFunc = new SteadyThermalContact3DAuxFunction();
+    }
     else {
-      throw std::runtime_error("HeatCondEquationSystem::register_initial_condition_fcn: steady_2d_thermal only supported");
+      throw std::runtime_error(
+        "HeatCondEquationSystem::register_initial_condition_fcn: "
+        "steady_2d_thermal/steady_3d_thermal only supported");
     }
     
     // create the algorithm

@@ -133,8 +133,8 @@ ContinuityAdvElemSuppAlg::elem_execute(
   double *p_dndx_lhs = shiftPoisson_ ? &ws_dndx_[0] : reducedSensitivities_ ? &ws_dndx_lhs_[0] : &ws_dndx_[0];
 
   // gather
-  stk::mesh::Entity const *  node_rels = bulkData_->begin_nodes(element);
-  int num_nodes = bulkData_->num_nodes(element);
+  stk::mesh::Entity const *  node_rels = realm_.begin_nodes_all(element);
+  int num_nodes = realm_.num_nodes_all(element);
 
   // sanity check on num nodes
   ThrowAssert( num_nodes == nodesPerElement );
