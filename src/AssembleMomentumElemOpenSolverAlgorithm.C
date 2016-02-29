@@ -106,6 +106,8 @@ AssembleMomentumElemOpenSolverAlgorithm::execute()
   // space for LHS/RHS; nodesPerElem*nDim*nodesPerElem*nDim and nodesPerElem*nDim
   std::vector<double> lhs;
   std::vector<double> rhs;
+  std::vector<int> scratchIds;
+  std::vector<double> scratchVals;
   std::vector<stk::mesh::Entity> connected_nodes;
 
   // ip values; both boundary and opposing surface
@@ -174,6 +176,8 @@ AssembleMomentumElemOpenSolverAlgorithm::execute()
     const int rhsSize = nodesPerElement*nDim;
     lhs.resize(lhsSize);
     rhs.resize(rhsSize);
+    scratchIds.resize(rhsSize);
+    scratchVals.resize(rhsSize);
     connected_nodes.resize(nodesPerElement);
 
     // algorithm related; element
@@ -260,9 +264,10 @@ AssembleMomentumElemOpenSolverAlgorithm::execute()
       const int face_ordinal = face_elem_ords[0];
       realm_.side_node_ordinals_all(theElemTopo, face_ordinal, face_node_ordinal_vec);
 
-      // mapping from ip to nodes for this ordinal
-      const int *ipNodeMap = meSCS->ipNodeMap(face_ordinal);
-      const int *faceIpNodeMap = meFC->ipNodeMap();
+
+      // mapping from ip to nodes for this ordinal; 
+      const int *ipNodeMap = meSCS->ipNodeMap(face_ordinal); // use with elem_node_rels
+      const int *faceIpNodeMap = meFC->ipNodeMap(); // use with face_node_rels
 
       //==========================================
       // gather nodal data off of element
@@ -519,7 +524,7 @@ AssembleMomentumElemOpenSolverAlgorithm::execute()
         }
       }
 
-      apply_coeff(connected_nodes, rhs, lhs, __FILE__);
+      apply_coeff(connected_nodes, scratchIds, scratchVals, rhs, lhs, __FILE__);
 
     }
   }

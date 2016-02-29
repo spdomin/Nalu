@@ -72,6 +72,8 @@ AssemblePNGBoundarySolverAlgorithm::execute()
   // space for LHS/RHS; nodesPerFace*nDim*nodesPerFace*nDim and nodesPerFace*nDim
   std::vector<double> lhs;
   std::vector<double> rhs;
+  std::vector<int> scratchIds;
+  std::vector<double> scratchVals;
   std::vector<stk::mesh::Entity> connected_nodes;
 
   // nodal fields to gather
@@ -93,19 +95,21 @@ AssemblePNGBoundarySolverAlgorithm::execute()
     // face master element
     MasterElement *meFC = realm_.get_surface_master_element(b.topology());
     const int nodesPerFace = meFC->nodesPerElement_;
-    const int numScsIp = meFC->numIntPoints_;
-    const int *ipNodeMap = meFC->ipNodeMap();
+    const int numScsBip = meFC->numIntPoints_;
+    const int *faceIpNodeMap = meFC->ipNodeMap();
 
     // resize some things; matrix related
     const int lhsSize = nodesPerFace*nDim*nodesPerFace*nDim;
     const int rhsSize = nodesPerFace*nDim;
     lhs.resize(lhsSize);
     rhs.resize(rhsSize);
+    scratchIds.resize(rhsSize);
+    scratchVals.resize(rhsSize);
     connected_nodes.resize(nodesPerFace);
 
     // algorithm related; element
     ws_scalarQ.resize(nodesPerFace);
-    ws_face_shape_function.resize(numScsIp*nodesPerFace);
+    ws_face_shape_function.resize(numScsBip*nodesPerFace);
   
     // pointers
     double *p_lhs = &lhs[0];
@@ -147,13 +151,13 @@ AssemblePNGBoundarySolverAlgorithm::execute()
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec_, b, k);
 
       // start the assembly
-      for ( int ip = 0; ip < numScsIp; ++ip ) {
+      for ( int ip = 0; ip < numScsBip; ++ip ) {
         
         // nearest node to ip
-        const int nearestNode = ipNodeMap[ip];
+        const int localFaceNode = faceIpNodeMap[ip];
 
         // save off some offsets for this ip
-        const int nnNdim = nearestNode*nDim;
+        const int nnNdim = localFaceNode*nDim;
         const int offSetSF_face = ip*nodesPerFace;
 
         // interpolate to bip
@@ -169,7 +173,7 @@ AssemblePNGBoundarySolverAlgorithm::execute()
         }
       }
       
-      apply_coeff(connected_nodes, rhs, lhs, __FILE__);
+      apply_coeff(connected_nodes, scratchIds, scratchVals, rhs, lhs, __FILE__);
 
     }
   }

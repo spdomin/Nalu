@@ -6,8 +6,9 @@
 /*------------------------------------------------------------------------*/
 
 
-#include <user_functions/SteadyTaylorVortexMixFracAuxFunction.h>
+#include <user_functions/VariableDensityNonIsoTemperatureAuxFunction.h>
 #include <algorithm>
+#include <NaluEnv.h>
 
 // basic c++
 #include <cmath>
@@ -17,17 +18,19 @@
 namespace sierra{
 namespace nalu{
 
-SteadyTaylorVortexMixFracAuxFunction::SteadyTaylorVortexMixFracAuxFunction() :
+VariableDensityNonIsoTemperatureAuxFunction::VariableDensityNonIsoTemperatureAuxFunction() :
   AuxFunction(0,1),
-  znot_(1.0),
-  amf_(10.0),
+  hnot_(1.0),
+  ah_(10.0),
+  Cp_(0.01),
+  Tref_(300.0),
   pi_(acos(-1.0))
 {
   // does nothing
 }
 
 void
-SteadyTaylorVortexMixFracAuxFunction::do_evaluate(
+VariableDensityNonIsoTemperatureAuxFunction::do_evaluate(
   const double *coords,
   const double /*time*/,
   const unsigned spatialDimension,
@@ -41,8 +44,13 @@ SteadyTaylorVortexMixFracAuxFunction::do_evaluate(
 
     const double x = coords[0];
     const double y = coords[1];
+    const double z = coords[2];
+    
+    const double h = cos(ah_*pi_*x)*cos(ah_*pi_*y)*cos(ah_*pi_*z);
 
-    fieldPtr[0] = znot_*cos(amf_*pi_*x)*sin(amf_*pi_*y);
+    const double temp = h/Cp_ + Tref_;
+
+    fieldPtr[0] = temp;
 
     fieldPtr += fieldSize;
     coords += spatialDimension;

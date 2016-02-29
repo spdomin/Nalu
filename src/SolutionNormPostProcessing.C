@@ -17,6 +17,9 @@
 #include <user_functions/SteadyThermalContact3DAuxFunction.h>
 #include <user_functions/SteadyTaylorVortexVelocityAuxFunction.h>
 #include <user_functions/SteadyTaylorVortexGradPressureAuxFunction.h>
+#include <user_functions/VariableDensityVelocityAuxFunction.h>
+#include <user_functions/VariableDensityNonIsoTemperatureAuxFunction.h>
+#include <user_functions/VariableDensityMixFracAuxFunction.h>
 
 // stk_util
 #include <stk_util/parallel/ParallelReduce.hpp>
@@ -212,8 +215,20 @@ SolutionNormPostProcessing::analytical_function_factory(
   else if ( functionName == "SteadyTaylorVortexVelocity" ) {
     theAuxFunc = new SteadyTaylorVortexVelocityAuxFunction(0,realm_.meta_data().spatial_dimension());
   }
+  else if ( functionName == "VariableDensityVelocity" ) {
+    theAuxFunc = new VariableDensityVelocityAuxFunction(0,realm_.meta_data().spatial_dimension());
+  }
+  else if ( functionName == "VariableDensityNonIsoVelocity" ) {
+    theAuxFunc = new VariableDensityVelocityAuxFunction(0,realm_.meta_data().spatial_dimension());
+  }
   else if ( functionName == "SteadyTaylorVortexGradPressure" ) {
     theAuxFunc = new SteadyTaylorVortexGradPressureAuxFunction(0,realm_.meta_data().spatial_dimension());
+  }
+  else if ( functionName == "VariableDensityMixtureFraction" ) {
+    theAuxFunc = new VariableDensityMixFracAuxFunction();
+  }
+  else if ( functionName == "VariableDensityNonIsoTemperature" ) {
+    theAuxFunc = new VariableDensityNonIsoTemperatureAuxFunction();
   }
   else {
     throw std::runtime_error("SolutionNormPostProcessing::setup: Only steady_2d_thermal user functions supported");

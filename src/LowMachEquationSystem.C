@@ -111,11 +111,23 @@
 #include <user_functions/TornadoAuxFunction.h>
 #include <user_functions/WindEnergyAuxFunction.h>
 #include <user_functions/WindEnergyTaylorVortexAuxFunction.h>
+
 #include <user_functions/SteadyTaylorVortexMomentumSrcElemSuppAlg.h>
 #include <user_functions/SteadyTaylorVortexContinuitySrcElemSuppAlg.h>
 #include <user_functions/SteadyTaylorVortexMomentumSrcNodeSuppAlg.h>
 #include <user_functions/SteadyTaylorVortexVelocityAuxFunction.h>
 #include <user_functions/SteadyTaylorVortexPressureAuxFunction.h>
+
+#include <user_functions/VariableDensityVelocityAuxFunction.h>
+#include <user_functions/VariableDensityPressureAuxFunction.h>
+#include <user_functions/VariableDensityContinuitySrcNodeSuppAlg.h>
+#include <user_functions/VariableDensityMomentumSrcNodeSuppAlg.h>
+
+#include <user_functions/VariableDensityNonIsoContinuitySrcNodeSuppAlg.h>
+#include <user_functions/VariableDensityNonIsoMomentumSrcNodeSuppAlg.h>
+
+#include <user_functions/TaylorGreenPressureAuxFunction.h>
+#include <user_functions/TaylorGreenVelocityAuxFunction.h>
 
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
@@ -417,7 +429,7 @@ LowMachEquationSystem::register_surface_pp_algorithm(
   stk::mesh::put_field(*tauWall, stk::mesh::selectUnion(partVector));
   ScalarFieldType *yplus =  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "yplus"));
   stk::mesh::put_field(*yplus, stk::mesh::selectUnion(partVector));
-
+ 
   // force output for these variables
   realm_.augment_output_variable_list(pressureForce->name());
   realm_.augment_output_variable_list(tauWall->name());
@@ -449,7 +461,7 @@ LowMachEquationSystem::register_surface_pp_algorithm(
 }
 
 //--------------------------------------------------------------------------
-//-------- register_initial_condition_fcn ------------------------------------------------
+//-------- register_initial_condition_fcn ----------------------------------
 //--------------------------------------------------------------------------
 void
 LowMachEquationSystem::register_initial_condition_fcn(
@@ -471,59 +483,50 @@ LowMachEquationSystem::register_initial_condition_fcn(
     // save off the field (np1 state)
     VectorFieldType *velocityNp1 = meta_data.get_field<VectorFieldType>(stk::topology::NODE_RANK, "velocity");
     
+    // create a few Aux things
+    AuxFunction *theAuxFunc = NULL;
+    AuxFunctionAlgorithm *auxAlg = NULL;
+
     if ( fcnName == "wind_energy_taylor_vortex") {
       
       // extract the params
       std::map<std::string, std::vector<double> >::const_iterator iterParams
         = theParams.find(dofName);
       if (iterParams != theParams.end()) {
-        std::vector<double> fcnParams = (*iterParams).second;
-	
+        std::vector<double> fcnParams = (*iterParams).second;	
         // create the function
-        AuxFunction *theAuxFunc = new WindEnergyTaylorVortexAuxFunction(0,nDim,fcnParams);
-	
-        // create the algorithm
-        AuxFunctionAlgorithm *auxAlg
-          = new AuxFunctionAlgorithm(realm_, part,
-				     velocityNp1, theAuxFunc,
-				     stk::topology::NODE_RANK);
-	
-        // push to ic
-        realm_.initCondAlg_.push_back(auxAlg);
+        theAuxFunc = new WindEnergyTaylorVortexAuxFunction(0,nDim,fcnParams);
       }
       else {
         throw std::runtime_error("Wind_energy_taylor_vortex missing parameters");
       }
     }
     else if ( fcnName == "SteadyTaylorVortex" ) {
-      
-      // create the function
-      AuxFunction *theAuxFunc = new SteadyTaylorVortexVelocityAuxFunction(0,nDim);
-      
-      // create the algorithm
-      AuxFunctionAlgorithm *auxAlg
-        = new AuxFunctionAlgorithm(realm_, part,
-            velocityNp1, theAuxFunc,
-            stk::topology::NODE_RANK);
-      
-      // push to ic
-      realm_.initCondAlg_.push_back(auxAlg);
+      theAuxFunc = new SteadyTaylorVortexVelocityAuxFunction(0,nDim);
+    }
+    else if ( fcnName == "VariableDensity" ) {      
+      theAuxFunc = new VariableDensityVelocityAuxFunction(0,nDim);
+    }
+    else if ( fcnName == "VariableDensityNonIso" ) {      
+      theAuxFunc = new VariableDensityVelocityAuxFunction(0,nDim);
     }
     else if ( fcnName == "convecting_taylor_vortex" ) {
-      
-      // create the function
-      AuxFunction *theAuxFunc = new ConvectingTaylorVortexVelocityAuxFunction(0,nDim);
-      
-      // create the algorithm
-      AuxFunctionAlgorithm *auxAlg
-        = new AuxFunctionAlgorithm(realm_, part,
-            velocityNp1, theAuxFunc,
-            stk::topology::NODE_RANK);
-      
-      // push to ic
-      realm_.initCondAlg_.push_back(auxAlg);
-      
+      theAuxFunc = new ConvectingTaylorVortexVelocityAuxFunction(0,nDim); 
     }
+    else if ( fcnName == "TaylorGreen" ) {
+      theAuxFunc = new TaylorGreenVelocityAuxFunction(0,nDim); 
+    }
+    else {
+      throw std::runtime_error("InitialCondFunction::non-supported velocity IC"); 
+    }
+
+    // create the algorithm
+    auxAlg = new AuxFunctionAlgorithm(realm_, part,
+                                      velocityNp1, theAuxFunc,
+                                      stk::topology::NODE_RANK);
+    
+    // push to ic
+    realm_.initCondAlg_.push_back(auxAlg);
   }
 }
 
@@ -543,7 +546,7 @@ LowMachEquationSystem::solve_and_update()
     continuityEqSys_->timerMisc_ += (timeB-timeA);
     isInit_ = false;
   }
-
+  
   // compute tvisc
   momentumEqSys_->tviscAlgDriver_->execute();
 
@@ -569,7 +572,7 @@ LowMachEquationSystem::solve_and_update()
       realm_.get_activate_aura());
     timeB = stk::cpu_time();
     momentumEqSys_->timerAssemble_ += (timeB-timeA);
-
+    
     // compute velocity relative to mesh with new velocity
     realm_.compute_vrtm();
 
@@ -586,7 +589,7 @@ LowMachEquationSystem::solve_and_update()
       realm_.get_activate_aura());
     timeB = stk::cpu_time();
     continuityEqSys_->timerAssemble_ += (timeB-timeA);
-
+    
     // compute mdot
     timeA = stk::cpu_time();
     continuityEqSys_->computeMdotAlgDriver_->execute();
@@ -1098,6 +1101,12 @@ MomentumEquationSystem::register_interior_algorithm(
         else if (sourceName == "SteadyTaylorVortex" ) {
           suppAlg = new SteadyTaylorVortexMomentumSrcNodeSuppAlg(realm_);
         }
+        else if (sourceName == "VariableDensity" ) {
+          suppAlg = new VariableDensityMomentumSrcNodeSuppAlg(realm_);
+        }
+        else if (sourceName == "VariableDensityNonIso" ) {
+          suppAlg = new VariableDensityNonIsoMomentumSrcNodeSuppAlg(realm_);
+        }
         else {
           throw std::runtime_error("MomentumEquationSystem::only buoyancy, buoyancy_boussinesq, body force or gcl are supported");
         }
@@ -1224,8 +1233,14 @@ MomentumEquationSystem::register_inflow_bc(
     else if ( fcnName == "SteadyTaylorVortex" ) {
       theAuxFunc = new SteadyTaylorVortexVelocityAuxFunction(0,nDim);
     }
+    else if ( fcnName == "VariableDensity" ) {
+      theAuxFunc = new VariableDensityVelocityAuxFunction(0,nDim);
+    }
+    else if ( fcnName == "VariableDensityNonIso" ) {
+      theAuxFunc = new VariableDensityVelocityAuxFunction(0,nDim);
+    }
     else {
-      throw std::runtime_error("MomentumEquationSystem::register_inflow_bc: Only convecting_tv supported");
+      throw std::runtime_error("MomentumEquationSystem::register_inflow_bc: limited functions supported");
     }
   }
   else {
@@ -1806,7 +1821,9 @@ void
 MomentumEquationSystem::compute_projected_nodal_gradient()
 {
   if ( !managePNG_ ) {
+    const double timeA = -stk::cpu_time();
     assembleNodalGradAlgDriver_->execute();
+    timerMisc_ += (stk::cpu_time() + timeA);
   }
   else {
     // this option is more complex... Rather than solving a nDim*nDim system, we
@@ -2139,8 +2156,14 @@ ContinuityEquationSystem::register_interior_algorithm(
         else if ( sourceName == "gcl" ) {
           suppAlg = new ContinuityGclNodeSuppAlg(realm_);
         }
+        else if ( sourceName == "VariableDensity" ) {
+          suppAlg = new VariableDensityContinuitySrcNodeSuppAlg(realm_);
+        }
+        else if ( sourceName == "VariableDensityNonIso" ) {
+          suppAlg = new VariableDensityNonIsoContinuitySrcNodeSuppAlg(realm_);
+        }
         else {
-          throw std::runtime_error("ContinuityEquationSystem::only density_time_derivative, low_speed_compressible or gcl are supported");
+          throw std::runtime_error("ContinuityEquationSystem::src; limited source terms supported");
         }
         // add supplemental algorithm
         theAlg->supplementalAlg_.push_back(suppAlg);
@@ -2206,8 +2229,14 @@ ContinuityEquationSystem::register_inflow_bc(
     else if ( fcnName == "SteadyTaylorVortex" ) {
       theAuxFunc = new SteadyTaylorVortexVelocityAuxFunction(0,nDim);
     }
+    else if ( fcnName == "VariableDensity" ) {
+      theAuxFunc = new VariableDensityVelocityAuxFunction(0,nDim);
+    }
+    else if ( fcnName == "VariableDensityNonIso" ) {
+      theAuxFunc = new VariableDensityVelocityAuxFunction(0,nDim);
+    }
     else {
-      throw std::runtime_error("ContEquationSystem::register_inflow_bc: Only convecting_tv supported");
+      throw std::runtime_error("ContEquationSystem::register_inflow_bc: limited functions supported");
     }
   }
   else {
@@ -2589,7 +2618,7 @@ ContinuityEquationSystem::reinitialize_linear_system()
 }
 
 //--------------------------------------------------------------------------
-//-------- register_initial_condition_fcn ------------------------------------------------
+//-------- register_initial_condition_fcn ----------------------------------
 //--------------------------------------------------------------------------
 void
 ContinuityEquationSystem::register_initial_condition_fcn(
@@ -2612,8 +2641,20 @@ ContinuityEquationSystem::register_initial_condition_fcn(
       // create the function
       theAuxFunc = new SteadyTaylorVortexPressureAuxFunction();      
     }
+    else if ( fcnName == "VariableDensity" ) {
+      // create the function
+      theAuxFunc = new VariableDensityPressureAuxFunction();      
+    }
+    else if ( fcnName == "VariableDensityNonIso" ) {
+      // create the function
+      theAuxFunc = new VariableDensityPressureAuxFunction();      
+    }
+    else if ( fcnName == "TaylorGreen" ) {
+      // create the function
+      theAuxFunc = new TaylorGreenPressureAuxFunction();      
+    }
     else {
-      throw std::runtime_error("ContinuityEquationSystem::register_initial_condition_fcn: Conv_tv only supported");
+      throw std::runtime_error("ContinuityEquationSystem::register_initial_condition_fcn: limited functions supported");
     }
     
     // create the algorithm
@@ -2653,7 +2694,9 @@ void
 ContinuityEquationSystem::compute_projected_nodal_gradient()
 {
   if ( !managePNG_ ) {
+    const double timeA = -stk::cpu_time();
     assembleNodalGradAlgDriver_->execute();
+    timerMisc_ += (stk::cpu_time() + timeA);
   }
   else {
     projectedNodalGradEqs_->solve_and_update_external();

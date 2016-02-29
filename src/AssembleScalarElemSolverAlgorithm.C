@@ -123,6 +123,8 @@ AssembleScalarElemSolverAlgorithm::execute()
   // space for LHS/RHS; nodesPerElem*nodesPerElem* and nodesPerElem
   std::vector<double> lhs;
   std::vector<double> rhs;
+  std::vector<int> scratchIds;
+  std::vector<double> scratchVals;
   std::vector<stk::mesh::Entity> connected_nodes;
 
   // supplemental algorithm setup
@@ -181,6 +183,8 @@ AssembleScalarElemSolverAlgorithm::execute()
     const int rhsSize = nodesPerElement;
     lhs.resize(lhsSize);
     rhs.resize(rhsSize);
+    scratchIds.resize(rhsSize);
+    scratchVals.resize(rhsSize);
     connected_nodes.resize(nodesPerElement);
 
     // algorithm related
@@ -415,7 +419,7 @@ AssembleScalarElemSolverAlgorithm::execute()
       for ( size_t i = 0; i < supplementalAlgSize; ++i )
         supplementalAlg_[i]->elem_execute( &lhs[0], &rhs[0], elem, meSCS, meSCV);
 
-      apply_coeff(connected_nodes, rhs, lhs, __FILE__);
+      apply_coeff(connected_nodes, scratchIds, scratchVals, rhs, lhs, __FILE__);
 
     }
   }

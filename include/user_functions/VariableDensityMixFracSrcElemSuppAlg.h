@@ -6,8 +6,8 @@
 /*------------------------------------------------------------------------*/
 
 
-#ifndef SteadyTaylorVortexMixFracSrcElemSuppAlg_h
-#define SteadyTaylorVortexMixFracSrcElemSuppAlg_h
+#ifndef VariableDensityMixFracSrcElemSuppAlg_h
+#define VariableDensityMixFracSrcElemSuppAlg_h
 
 #include <SupplementalAlgorithm.h>
 #include <FieldTypeDef.h>
@@ -21,14 +21,14 @@ namespace nalu{
 class Realm;
 class MasterElement;
 
-class SteadyTaylorVortexMixFracSrcElemSuppAlg : public SupplementalAlgorithm
+class VariableDensityMixFracSrcElemSuppAlg : public SupplementalAlgorithm
 {
 public:
 
-  SteadyTaylorVortexMixFracSrcElemSuppAlg(
+  VariableDensityMixFracSrcElemSuppAlg(
     Realm &realm);
 
-  virtual ~SteadyTaylorVortexMixFracSrcElemSuppAlg() {}
+  virtual ~VariableDensityMixFracSrcElemSuppAlg() {}
 
   virtual void setup();
 
@@ -53,6 +53,7 @@ public:
   const double rhoS_;
   const double unot_;
   const double vnot_;
+  const double wnot_;
   const double znot_;
   const double pnot_;
   const double visc_;

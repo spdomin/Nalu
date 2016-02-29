@@ -111,13 +111,18 @@ ComputeLowReynoldsSDRWallAlgorithm::execute()
 
     // face master element
     MasterElement *meFC = realm_.get_surface_master_element(b.topology());
+    const int numScsBip = meFC->numIntPoints_;
+
+    // mapping from ip to nodes for this ordinal
+    const int *faceIpNodeMap = meFC->ipNodeMap();
+
     const int nodesPerFace = meFC->nodesPerElement_;
-    std::vector<int> face_node_ordinal_vec(nodesPerFace);
+
 
     // algorithm related; element
     ws_density.resize(nodesPerFace);
     ws_viscosity.resize(nodesPerFace);
-    ws_face_shape_function.resize(nodesPerFace*nodesPerFace);
+    ws_face_shape_function.resize(numScsBip*nodesPerFace);
 
     // pointers
     double *p_density = &ws_density[0];
@@ -159,25 +164,24 @@ ComputeLowReynoldsSDRWallAlgorithm::execute()
       const stk::mesh::Entity* face_elem_rels = bulk_data.begin_elements(face);
       ThrowAssert( bulk_data.num_elements(face) == 1 );
 
-      // get element; its face ordinal number and populate face_node_ordinal_vec
+      // get element; its face ordinal number
       stk::mesh::Entity element = face_elem_rels[0];
       const int face_ordinal = bulk_data.begin_element_ordinals(face)[0];
-              realm_.side_node_ordinals_all(theElemTopo, face_ordinal, face_node_ordinal_vec);
 
       // get the relations off of element
       stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(element);
 
       // loop over face nodes
-      for ( int ip = 0; ip < num_face_nodes; ++ip ) {
+      for ( int ip = 0; ip < numScsBip; ++ip ) {
 
         const int offSetAveraVec = ip*nDim;
 
         const int opposingNode = meSCS->opposingNodes(face_ordinal,ip);
-        const int nearestNode = face_node_ordinal_vec[ip];
+        const int localFaceNode = faceIpNodeMap[ip];
 
         // left and right nodes; right is on the face; left is the opposing node
         stk::mesh::Entity nodeL = elem_node_rels[opposingNode];
-        stk::mesh::Entity nodeR = elem_node_rels[nearestNode];
+        stk::mesh::Entity nodeR = face_node_rels[localFaceNode];
 
         // extract nodal fields
         const double * coordL = stk::mesh::field_data(*coordinates_, nodeL );
