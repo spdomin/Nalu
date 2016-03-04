@@ -87,6 +87,7 @@
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
 #include <stk_util/environment/CPUTime.hpp>
+#include <stk_util/environment/WallTime.hpp>
 #include <stk_util/environment/perf_util.hpp>
 
 // stk_mesh/base/fem
@@ -216,6 +217,7 @@ namespace nalu{
     activateAura_(false),
     activateMemoryDiagnostic_(false),
     supportInconsistentRestart_(false),
+    wallTimeStart_(stk::wall_time()),
     doPromotion_(false),
     promotionOrder_(1),
     timerPromoteMesh_(0.0),
@@ -875,7 +877,6 @@ Realm::setup_bc()
 void
 Realm::enforce_bc_on_exposed_faces()
 {
-
   // first, skin mesh and, therefore, populate
   stk::mesh::Selector activePart = metaData_->locally_owned_part() | metaData_->globally_shared_part();
   stk::mesh::PartVector partVec;
@@ -3366,8 +3367,30 @@ Realm::provide_output()
     const double currentTime = get_current_time();
     const int timeStepCount = get_time_step_count();
     const int modStep = timeStepCount - outputInfo_->outputStart_;
+
+    // check for elapsed WALL time threshold
+    bool forcedOutput = false;
+    if ( outputInfo_->userWallTimeResults_.first) {
+      const double elapsedWallTime = stk::wall_time() - wallTimeStart_;
+      // find the max over all core
+      double g_elapsedWallTime = 0.0;
+      stk::all_reduce_max(NaluEnv::self().parallel_comm(), &elapsedWallTime, &g_elapsedWallTime, 1);
+      // convert to hours
+      g_elapsedWallTime /= 3600.0;
+      // only force output the first time the timer is exceeded
+      if ( g_elapsedWallTime > outputInfo_->userWallTimeResults_.second ) {
+        forcedOutput = true;
+        outputInfo_->userWallTimeResults_.first = false;
+        NaluEnv::self().naluOutputP0()
+            << "Realm::provide_output()::Forced Result output will be processed at current time: "
+            << currentTime << std::endl;
+        NaluEnv::self().naluOutputP0()
+            <<  " Elapsed (max) WALL time: " << g_elapsedWallTime << " (hours)" << std::endl;
+      }
+    }
+
     const bool isOutput 
-      = timeStepCount >=outputInfo_->outputStart_ && modStep % outputInfo_->outputFreq_ == 0;
+      = (timeStepCount >=outputInfo_->outputStart_ && modStep % outputInfo_->outputFreq_ == 0) || forcedOutput;
 
     if ( isOutput ) {
       // when adaptivity has occurred, re-create the output mesh file
@@ -3409,8 +3432,30 @@ Realm::provide_restart_output()
     const double currentTime = get_current_time();
     const int timeStepCount = get_time_step_count();
     const int modStep = timeStepCount - outputInfo_->restartStart_;
+
+    // check for elapsed WALL time threshold
+    bool forcedOutput = false;
+    if ( outputInfo_->userWallTimeRestart_.first) {
+      const double elapsedWallTime = stk::wall_time() - wallTimeStart_;
+      // find the max over all core
+      double g_elapsedWallTime = 0.0;
+      stk::all_reduce_max(NaluEnv::self().parallel_comm(), &elapsedWallTime, &g_elapsedWallTime, 1);
+      // convert to hours
+      g_elapsedWallTime /= 3600.0;
+      // only force output the first time the timer is exceeded
+      if ( g_elapsedWallTime > outputInfo_->userWallTimeRestart_.second ) {
+        forcedOutput = true;
+        outputInfo_->userWallTimeRestart_.first = false;
+        NaluEnv::self().naluOutputP0()
+            << "Realm::provide_restart_output()::Forced Restart output will be processed at current time: "
+            << currentTime << std::endl;
+        NaluEnv::self().naluOutputP0()
+            <<  " Elapsed (max) WALL time: " << g_elapsedWallTime << " (hours)" << std::endl;
+      }
+    }
+
     const bool isRestartOutputStep 
-      = timeStepCount >= outputInfo_->restartStart_ && modStep % outputInfo_->restartFreq_ == 0;
+      = (timeStepCount >= outputInfo_->restartStart_ && modStep % outputInfo_->restartFreq_ == 0) || forcedOutput;
     
     if ( isRestartOutputStep ) {
 
@@ -4340,6 +4385,15 @@ Realm::number_of_states()
 {
   const int numStates = (timeIntegrator_->secondOrderTimeAccurate_) ? 3 : 2;
   return numStates;
+}
+
+//--------------------------------------------------------------------------
+//-------- name ------------------------------------------------------------
+//--------------------------------------------------------------------------
+std::string
+Realm::name()
+{
+  return name_;
 }
 
 //--------------------------------------------------------------------------

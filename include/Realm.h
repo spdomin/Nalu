@@ -327,6 +327,8 @@ class Realm {
 
   int number_of_states();
 
+  std::string name();
+
   // redirection of stk::mesh::get_buckets to allow global selector
   //  to be applied, e.g., in adaptivity we need to avoid the parent
   //  elements
@@ -472,6 +474,9 @@ class Realm {
 
   // sometimes restarts can be missing states or dofs
   bool supportInconsistentRestart_;
+
+  // beginning wall time
+  double wallTimeStart_;
 
   // mesh parts for all boundary conditions
   stk::mesh::PartVector bcPartVec_;

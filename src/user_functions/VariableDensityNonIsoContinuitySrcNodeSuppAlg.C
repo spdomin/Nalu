@@ -6,7 +6,7 @@
 /*------------------------------------------------------------------------*/
 
 
-#include <user_functions/SteadyTaylorVortexMixFracSrcNodeSuppAlg.h>
+#include <user_functions/VariableDensityNonIsoContinuitySrcNodeSuppAlg.h>
 #include <SupplementalAlgorithm.h>
 #include <FieldTypeDef.h>
 #include <Realm.h>
@@ -24,27 +24,30 @@ namespace nalu{
 //==========================================================================
 // Class Definition
 //==========================================================================
-// SteadyTaylorVortexMixFracSrcNodeSuppAlg - base class for algorithm
+// VariableDensityNonIsoContinuitySrcNodeSuppAlg - base class for algorithm
 //==========================================================================
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
-SteadyTaylorVortexMixFracSrcNodeSuppAlg::SteadyTaylorVortexMixFracSrcNodeSuppAlg(
+VariableDensityNonIsoContinuitySrcNodeSuppAlg::VariableDensityNonIsoContinuitySrcNodeSuppAlg(
   Realm &realm)
   : SupplementalAlgorithm(realm),
     coordinates_(NULL),
     dualNodalVolume_(NULL),
-    rhoP_(1.0),
-    rhoS_(1.0),
     unot_(1.0),
     vnot_(1.0),
-    znot_(1.0),
-    pnot_(1.0),
-    visc_(0.001),
+    wnot_(1.0),
+    hnot_(1.0),
     a_(20.0),
-    amf_(10.0),
-    Sc_(0.9),
-    pi_(acos(-1.0))
+    ah_(10.0),
+    Pref_(100.0),
+    MW_(30.0),
+    R_(10.0),
+    Tref_(300.0),
+    Cp_(0.01),
+    Pr_(0.8),
+    pi_(acos(-1.0)),
+    projTimeScale_(1.0)
 {
   // save off fields
   stk::mesh::MetaData & meta_data = realm_.meta_data();
@@ -56,16 +59,16 @@ SteadyTaylorVortexMixFracSrcNodeSuppAlg::SteadyTaylorVortexMixFracSrcNodeSuppAlg
 //-------- setup -----------------------------------------------------------
 //--------------------------------------------------------------------------
 void
-SteadyTaylorVortexMixFracSrcNodeSuppAlg::setup()
+VariableDensityNonIsoContinuitySrcNodeSuppAlg::setup()
 {
-  // nothing
+  projTimeScale_ = realm_.get_time_step()/realm_.get_gamma1();
 }
 
 //--------------------------------------------------------------------------
 //-------- node_execute ----------------------------------------------------
 //--------------------------------------------------------------------------
 void
-SteadyTaylorVortexMixFracSrcNodeSuppAlg::node_execute(
+VariableDensityNonIsoContinuitySrcNodeSuppAlg::node_execute(
   double */*lhs*/,
   double *rhs,
   stk::mesh::Entity node)
@@ -73,12 +76,14 @@ SteadyTaylorVortexMixFracSrcNodeSuppAlg::node_execute(
   // deal with lumped mass matrix
   const double *coords = stk::mesh::field_data(*coordinates_, node);
   const double dualVolume = *stk::mesh::field_data(*dualNodalVolume_, node );
+
   const double x = coords[0];
   const double y = coords[1];
+  const double z = coords[2];
 
-  const double src = amf_ * pi_ / Sc_ * (cos(a_ * pi_ * x) * sin(a_ * pi_ * y) * sin(amf_ * pi_ * x) * sin(amf_ * pi_ * y) * Sc_ + sin(a_ * pi_ * x) * cos(a_ * pi_ * y) * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * Sc_ + 0.2e1 * visc_ * cos(amf_ * pi_ * x) * amf_ * pi_ * sin(amf_ * pi_ * y));
-
-  rhs[0] += src*dualVolume;
+  const double src = -Pref_ * MW_ / R_ * pow(hnot_ * cos(ah_ * pi_ * x) * cos(ah_ * pi_ * y) * cos(ah_ * pi_ * z) / Cp_ + Tref_, -0.2e1) * unot_ * cos(a_ * pi_ * x) * sin(a_ * pi_ * y) * sin(a_ * pi_ * z) * hnot_ * sin(ah_ * pi_ * x) * ah_ * pi_ * cos(ah_ * pi_ * y) * cos(ah_ * pi_ * z) / Cp_ + Pref_ * MW_ / R_ / (hnot_ * cos(ah_ * pi_ * x) * cos(ah_ * pi_ * y) * cos(ah_ * pi_ * z) / Cp_ + Tref_) * unot_ * sin(a_ * pi_ * x) * a_ * pi_ * sin(a_ * pi_ * y) * sin(a_ * pi_ * z) + Pref_ * MW_ / R_ * pow(hnot_ * cos(ah_ * pi_ * x) * cos(ah_ * pi_ * y) * cos(ah_ * pi_ * z) / Cp_ + Tref_, -0.2e1) * vnot_ * sin(a_ * pi_ * x) * cos(a_ * pi_ * y) * sin(a_ * pi_ * z) * hnot_ * cos(ah_ * pi_ * x) * sin(ah_ * pi_ * y) * ah_ * pi_ * cos(ah_ * pi_ * z) / Cp_ - Pref_ * MW_ / R_ / (hnot_ * cos(ah_ * pi_ * x) * cos(ah_ * pi_ * y) * cos(ah_ * pi_ * z) / Cp_ + Tref_) * vnot_ * sin(a_ * pi_ * x) * sin(a_ * pi_ * y) * a_ * pi_ * sin(a_ * pi_ * z) - Pref_ * MW_ / R_ * pow(hnot_ * cos(ah_ * pi_ * x) * cos(ah_ * pi_ * y) * cos(ah_ * pi_ * z) / Cp_ + Tref_, -0.2e1) * wnot_ * sin(a_ * pi_ * x) * sin(a_ * pi_ * y) * cos(a_ * pi_ * z) * hnot_ * cos(ah_ * pi_ * x) * cos(ah_ * pi_ * y) * sin(ah_ * pi_ * z) * ah_ * pi_ / Cp_ + Pref_ * MW_ / R_ / (hnot_ * cos(ah_ * pi_ * x) * cos(ah_ * pi_ * y) * cos(ah_ * pi_ * z) / Cp_ + Tref_) * wnot_ * sin(a_ * pi_ * x) * sin(a_ * pi_ * y) * sin(a_ * pi_ * z) * a_ * pi_;
+ 
+  rhs[0] += src*dualVolume/projTimeScale_;
 }
 
 } // namespace nalu

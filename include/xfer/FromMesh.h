@@ -31,6 +31,7 @@
 namespace stk {
 namespace mesh {
 class Part;
+typedef std::vector<Part*> PartVector;
 class MetaData;
 class BulkData;
 }
@@ -53,41 +54,87 @@ public :
   typedef std::pair<Box,EntityProc> BoundingBox;
 
   enum {Dimension = 3};
-
+  
   typedef std::vector<std::pair<std::string, std::string> > PairNames;
 
 
   std::vector< const stk::mesh::FieldBase *>
-  get_fields(const stk::mesh::MetaData &fromMetaData, const PairNames &VarPairName)
-  {
+  get_fields(const stk::mesh::MetaData &fromMetaData, const PairNames &VarPairName) {
+    // will want to check that all is well with field registration
+    bool allFieldsAreFine = true;
     std::vector< const stk::mesh::FieldBase *> fromFieldVec;
     // provide field names
     for(PairNames::const_iterator i=VarPairName.begin(); i!=VarPairName.end(); ++i) {
-      const std::string &name = i->first;
-      const stk::mesh::FieldBase *fromfield = stk::mesh::get_field_by_name(name,fromMetaData);
-      fromFieldVec.push_back(fromfield);
-    }
-    return fromFieldVec;
-  }
+      const std::string &fieldName = i->first;
+      const stk::mesh::FieldBase *fromfield = stk::mesh::get_field_by_name(fieldName,fromMetaData);
+      if ( NULL == fromfield ) {
+        allFieldsAreFine = false;
+        NaluEnv::self().naluOutputP0() 
+          << "Xfer::FromMesh:Error field: " << fieldName
+          << " has not been registered anywhere within the FromRealm: " << fromRealm_.name() << std::endl;
+      }
+      else {
+        // always push back; check for errors below
+        fromFieldVec.push_back(fromfield);
 
-  FromMesh(const stk::mesh::MetaData &fromMetaData,
-                 stk::mesh::BulkData &fromBulkData,
-                 Realm &fromRealm,
-           const std::string &coordinates_name,
-           const PairNames &VarPairName,
-           const stk::mesh::Part *fromMeshPart,
-           const stk::ParallelMachine comm) :
-    fromMetaData_   (fromMetaData),
+        // check that the field is defined on **all** parts
+        stk::mesh::Selector fieldSelector = stk::mesh::selectField(*fromfield);
+        for ( size_t k = 0; k < fromPartVec_.size(); ++k ) {
+          
+          stk::mesh::BucketVector const &partBuckets 
+            = fromBulkData_.get_buckets(stk::topology::NODE_RANK, stk::mesh::Selector(*fromPartVec_[k]));
+
+          bool fieldIsFine = true;
+          for ( stk::mesh::BucketVector::const_iterator ib = partBuckets.begin();
+                ib != partBuckets.end() ; ++ib ) {
+            stk::mesh::Bucket & b = **ib ;
+            fieldIsFine &= fieldSelector(b);
+          }
+          
+          // local check to make sure that the field is somewhere (delay the throw)
+          if ( !fieldIsFine ) {
+            NaluEnv::self().naluOutputP0() 
+              << "Xfer::FromMesh:Error field: " << fromfield->name() 
+              << " is not registered on part: " << fromPartVec_[k]->name() << std::endl;
+            allFieldsAreFine = false;
+          }
+        }
+      }
+    }
+    
+    // final error check; only return when all is well
+    if ( allFieldsAreFine ) {
+      return fromFieldVec;
+    }
+    else {
+      throw std::runtime_error("Xfer::FromMesh:Error field registration on desired parts of the mesh is not complete");
+    }
+  }
+  
+  FromMesh(
+    const stk::mesh::MetaData &fromMetaData,
+    stk::mesh::BulkData &fromBulkData,
+    Realm &fromRealm,
+    const std::string &coordinates_name,
+    const PairNames &VarPairName,
+    const stk::mesh::PartVector &fromPartVec,
+    const stk::ParallelMachine comm) 
+    : fromMetaData_   (fromMetaData),
     fromBulkData_   (fromBulkData),
     fromRealm_      (fromRealm),
     fromcoordinates_(fromMetaData.get_field<VectorFieldType>(stk::topology::NODE_RANK,coordinates_name)),
+    fromPartVec_    (fromPartVec),
     fromFieldVec_   (get_fields(fromMetaData, VarPairName)),
-    fromMeshPart_   (fromMeshPart),
     comm_           (comm),
     mesh_modified_  (false),
     ghosting_       (0),
     ghosting_map_   ()
-  {}
+    {
+      // nothing to do
+    }
+  
+
+  ~FromMesh(){};
 
   struct BoundingBoxCompare{
     bool operator()(const BoundingBox &a, const BoundingBox & b) const
@@ -107,10 +154,10 @@ public :
     Point min_corner, max_corner;
 
     stk::mesh::Selector s_locally_owned_union = fromMetaData_.locally_owned_part()
-      & stk::mesh::Selector(*fromMeshPart_);
+      & stk::mesh::selectUnion(fromPartVec_);
 
-    // determine entity rank for the part served up
-    stk::mesh::EntityRank partEntityRank = fromMeshPart_->primary_entity_rank();
+    // determine entity rank for the part served up; should be homogeneous
+    stk::mesh::EntityRank partEntityRank = fromPartVec_[0]->primary_entity_rank();
 
     stk::mesh::BucketVector const& entity_buckets = fromBulkData_.get_buckets( partEntityRank, s_locally_owned_union );
     for ( stk::mesh::BucketVector::const_iterator ib = entity_buckets.begin();
@@ -197,13 +244,12 @@ public :
   Entity entity(const EntityKey k) const
   { return fromBulkData_.get_entity(k); }
 
-
   const stk::mesh::MetaData &fromMetaData_;
         stk::mesh::BulkData &fromBulkData_;
         Realm &fromRealm_;
   const VectorFieldType *fromcoordinates_;
+  const stk::mesh::PartVector fromPartVec_;
   const std::vector< const stk::mesh::FieldBase *> fromFieldVec_;
-  const stk::mesh::Part *fromMeshPart_;
   const stk::ParallelMachine comm_;
 
   bool mesh_modified_;

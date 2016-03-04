@@ -6,7 +6,7 @@
 /*------------------------------------------------------------------------*/
 
 
-#include <user_functions/SteadyTaylorVortexMixFracSrcElemSuppAlg.h>
+#include <user_functions/VariableDensityMixFracSrcElemSuppAlg.h>
 #include <SupplementalAlgorithm.h>
 #include <FieldTypeDef.h>
 #include <Realm.h>
@@ -24,27 +24,28 @@ namespace nalu{
 //==========================================================================
 // Class Definition
 //==========================================================================
-// SteadyTaylorVortexMixFracSrcElemSuppAlg - base class for algorithm
+// VariableDensityMixFracSrcElemSuppAlg - base class for algorithm
 //==========================================================================
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
-SteadyTaylorVortexMixFracSrcElemSuppAlg::SteadyTaylorVortexMixFracSrcElemSuppAlg(
+VariableDensityMixFracSrcElemSuppAlg::VariableDensityMixFracSrcElemSuppAlg(
   Realm &realm)
   : SupplementalAlgorithm(realm),
     bulkData_(&realm.bulk_data()),
     coordinates_(NULL),
     nDim_(realm_.spatialDimension_),
-    rhoP_(1.0),
+    rhoP_(0.1),
     rhoS_(1.0),
     unot_(1.0),
     vnot_(1.0),
+    wnot_(1.0),
     znot_(1.0),
     pnot_(1.0),
     visc_(0.001),
     a_(20.0),
     amf_(10.0),
-    Sc_(0.9),
+    Sc_(0.8),
     pi_(acos(-1.0)),
     useShifted_(false)
 {
@@ -60,7 +61,7 @@ SteadyTaylorVortexMixFracSrcElemSuppAlg::SteadyTaylorVortexMixFracSrcElemSuppAlg
 //-------- elem_resize -----------------------------------------------------
 //--------------------------------------------------------------------------
 void
-SteadyTaylorVortexMixFracSrcElemSuppAlg::elem_resize(
+VariableDensityMixFracSrcElemSuppAlg::elem_resize(
   MasterElement */*meSCS*/,
   MasterElement *meSCV)
 {
@@ -71,20 +72,17 @@ SteadyTaylorVortexMixFracSrcElemSuppAlg::elem_resize(
   ws_scv_volume_.resize(numScvIp);
 
   // compute shape function
-  const bool doIt = true;
-  if ( doIt ) {
   if ( useShifted_ )
     meSCV->shifted_shape_fcn(&ws_shape_function_[0]);
   else
     meSCV->shape_fcn(&ws_shape_function_[0]);
-  }
 }
 
 //--------------------------------------------------------------------------
 //-------- setup -----------------------------------------------------------
 //--------------------------------------------------------------------------
 void
-SteadyTaylorVortexMixFracSrcElemSuppAlg::setup()
+VariableDensityMixFracSrcElemSuppAlg::setup()
 {
   // nothing
 }
@@ -93,7 +91,7 @@ SteadyTaylorVortexMixFracSrcElemSuppAlg::setup()
 //-------- elem_execute ----------------------------------------------------
 //--------------------------------------------------------------------------
 void
-SteadyTaylorVortexMixFracSrcElemSuppAlg::elem_execute(
+VariableDensityMixFracSrcElemSuppAlg::elem_execute(
   double */*lhs*/,
   double *rhs,
   stk::mesh::Entity element,
@@ -142,12 +140,14 @@ SteadyTaylorVortexMixFracSrcElemSuppAlg::elem_execute(
       for ( int j = 0; j < nDim_; ++j )
         scvCoords_[j] += r*ws_coordinates_[ic*nDim_+j];
     }
+
     const double x = scvCoords_[0];
     const double y = scvCoords_[1];
+    const double z = scvCoords_[2];
     
-    const double src = amf_ * pi_ / Sc_ * (cos(a_ * pi_ * x) * sin(a_ * pi_ * y) * sin(amf_ * pi_ * x) * sin(amf_ * pi_ * y) * Sc_ + sin(a_ * pi_ * x) * cos(a_ * pi_ * y) * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * Sc_ + 0.2e1 * visc_ * cos(amf_ * pi_ * x) * amf_ * pi_ * sin(amf_ * pi_ * y));
+    const double src = 0.10e1 * pow(znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) / rhoP_ + (0.1e1 - znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z)) / rhoS_, -0.2e1) * unot_ * cos(a_ * pi_ * x) * sin(a_ * pi_ * y) * sin(a_ * pi_ * z) * znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) * (-znot_ * sin(amf_ * pi_ * x) * amf_ * pi_ * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) / rhoP_ + znot_ * sin(amf_ * pi_ * x) * amf_ * pi_ * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) / rhoS_) + 0.10e1 / (znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) / rhoP_ + (0.1e1 - znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z)) / rhoS_) * unot_ * sin(a_ * pi_ * x) * a_ * pi_ * sin(a_ * pi_ * y) * sin(a_ * pi_ * z) * znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) + 0.10e1 / (znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) / rhoP_ + (0.1e1 - znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z)) / rhoS_) * unot_ * cos(a_ * pi_ * x) * sin(a_ * pi_ * y) * sin(a_ * pi_ * z) * znot_ * sin(amf_ * pi_ * x) * amf_ * pi_ * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) - 0.10e1 * pow(znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) / rhoP_ + (0.1e1 - znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z)) / rhoS_, -0.2e1) * vnot_ * sin(a_ * pi_ * x) * cos(a_ * pi_ * y) * sin(a_ * pi_ * z) * znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) * (-znot_ * cos(amf_ * pi_ * x) * sin(amf_ * pi_ * y) * amf_ * pi_ * cos(amf_ * pi_ * z) / rhoP_ + znot_ * cos(amf_ * pi_ * x) * sin(amf_ * pi_ * y) * amf_ * pi_ * cos(amf_ * pi_ * z) / rhoS_) - 0.10e1 / (znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) / rhoP_ + (0.1e1 - znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z)) / rhoS_) * vnot_ * sin(a_ * pi_ * x) * sin(a_ * pi_ * y) * a_ * pi_ * sin(a_ * pi_ * z) * znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) - 0.10e1 / (znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) / rhoP_ + (0.1e1 - znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z)) / rhoS_) * vnot_ * sin(a_ * pi_ * x) * cos(a_ * pi_ * y) * sin(a_ * pi_ * z) * znot_ * cos(amf_ * pi_ * x) * sin(amf_ * pi_ * y) * amf_ * pi_ * cos(amf_ * pi_ * z) + 0.10e1 * pow(znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) / rhoP_ + (0.1e1 - znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z)) / rhoS_, -0.2e1) * wnot_ * sin(a_ * pi_ * x) * sin(a_ * pi_ * y) * cos(a_ * pi_ * z) * znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) * (-znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * sin(amf_ * pi_ * z) * amf_ * pi_ / rhoP_ + znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * sin(amf_ * pi_ * z) * amf_ * pi_ / rhoS_) + 0.10e1 / (znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) / rhoP_ + (0.1e1 - znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z)) / rhoS_) * wnot_ * sin(a_ * pi_ * x) * sin(a_ * pi_ * y) * sin(a_ * pi_ * z) * a_ * pi_ * znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) + 0.10e1 / (znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z) / rhoP_ + (0.1e1 - znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z)) / rhoS_) * wnot_ * sin(a_ * pi_ * x) * sin(a_ * pi_ * y) * cos(a_ * pi_ * z) * znot_ * cos(amf_ * pi_ * x) * cos(amf_ * pi_ * y) * sin(amf_ * pi_ * z) * amf_ * pi_ + 0.3e1 * visc_ / Sc_ * znot_ * cos(amf_ * pi_ * x) * amf_ * amf_ * pi_ * pi_ * cos(amf_ * pi_ * y) * cos(amf_ * pi_ * z);
 
-    rhs[nearestNode] += src*ws_coordinates_[ip];      
+    rhs[nearestNode] += src*ws_scv_volume_[ip];      
   }
 }
 

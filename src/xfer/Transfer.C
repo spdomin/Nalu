@@ -92,16 +92,64 @@ Transfer::load(const YAML::Node & node)
   // realm names
   const YAML::Node & realmPair = node["realm_pair"];
   if ( realmPair.size() != 2 )
-    throw std::runtime_error("need two realm pairs for xfer");
+    throw std::runtime_error("XFER::Error: need two realm pairs for xfer");
   realmPair[0] >> realmPairName_.first;
   realmPair[1] >> realmPairName_.second;
 
+  // set bools for variety of mesh part declarations
+  const bool hasOld = node.FindValue("mesh_part_pair");
+  const bool hasNewFrom = node.FindValue("from_target_name");
+  const bool hasNewTo = node.FindValue("to_target_name");
+
   // mesh part pairs
-  const YAML::Node & meshPartPair = node["mesh_part_pair"];
-  if ( meshPartPair.size() != 2 )
-    throw std::runtime_error("need two mesh part pairs for xfer");
-  meshPartPair[0] >> meshPartPairName_.first;
-  meshPartPair[1] >> meshPartPairName_.second;
+  if ( hasOld ) {
+    // error check to ensure old and new are not mixed
+    if ( hasNewFrom || hasNewTo )
+      throw std::runtime_error("XFER::Error: part definition error: can not mix mesh part line commands");
+
+    // proceed safely
+    const YAML::Node & meshPartPairName = node["mesh_part_pair"];
+    if ( meshPartPairName.size() != 2 )
+      throw std::runtime_error("need two mesh part pairs for xfer");
+    // resize and set the value
+    fromPartNameVec_.resize(1);
+    toPartNameVec_.resize(1);
+    meshPartPairName[0] >> fromPartNameVec_[0];
+    meshPartPairName[1] >> toPartNameVec_[0];
+  }
+  else {
+    // new methodology that allows for full target; error check
+    if ( !hasNewFrom )
+      throw  std::runtime_error("XFER::Error: part definition error: missing a from_target_name");
+    if ( !hasNewTo )
+      throw  std::runtime_error("XFER::Error: part definition error: missing a to_target_name");
+
+    // proceed safely; manage "from" parts
+    const YAML::Node &targetsFrom = node["from_target_name"];
+    if (targetsFrom.Type() == YAML::NodeType::Scalar) {
+      fromPartNameVec_.resize(1);
+      targetsFrom >> fromPartNameVec_[0];
+    }
+    else {
+      fromPartNameVec_.resize(targetsFrom.size());
+      for (size_t i=0; i < targetsFrom.size(); ++i) {
+        targetsFrom[i] >> fromPartNameVec_[i];
+      }
+    }
+    
+    // manage "to" parts
+    const YAML::Node &targetsTo = node["to_target_name"];
+    if (targetsTo.Type() == YAML::NodeType::Scalar) {
+      toPartNameVec_.resize(1);
+      targetsTo >> toPartNameVec_[0];
+    }
+    else {
+      toPartNameVec_.resize(targetsTo.size());
+      for (size_t i=0; i < targetsTo.size(); ++i) {
+        targetsTo[i] >> toPartNameVec_[i];
+      }
+    }
+  }
 
   // search method
   if ( node.FindValue("search_method") ) {
@@ -206,19 +254,15 @@ Transfer::load(const YAML::Node & node)
 void
 Transfer::breadboard()
 {
-
-  // define from and to names
-  std::string fromName, toName;
-
   // realm pair
-  fromName = realmPairName_.first;
-  toName = realmPairName_.second;
+  const std::string fromRealmName = realmPairName_.first;
+  const std::string toRealmName = realmPairName_.second;
 
   // extact the realms
-  fromRealm_ = root()->realms_->find_realm(fromName);
+  fromRealm_ = root()->realms_->find_realm(fromRealmName);
   if ( NULL == fromRealm_ )
     throw std::runtime_error("from realm in xfer is NULL");
-  toRealm_ = root()->realms_->find_realm(toName);
+  toRealm_ = root()->realms_->find_realm(toRealmName);
   if ( NULL == toRealm_ )
     throw std::runtime_error("to realm in xfer is NULL");
 
@@ -229,21 +273,28 @@ Transfer::breadboard()
   stk::mesh::MetaData &fromMetaData = fromRealm_->meta_data();
   stk::mesh::MetaData &toMetaData = toRealm_->meta_data();
 
-  // mesh part pairs
-  fromName = meshPartPairName_.first;
-  toName = meshPartPairName_.second;
+  // from mesh parts..
+  for ( size_t k = 0; k < fromPartNameVec_.size(); ++k ) {
+    // get the part; no need to subset
+    stk::mesh::Part *fromTargetPart = fromMetaData.get_part(fromPartNameVec_[k]);
+    if ( NULL == fromTargetPart )
+      throw std::runtime_error("from target part in xfer is NULL; check: " + fromPartNameVec_[k]);
+    else
+      fromPartVec_.push_back(fromTargetPart);
+  }
 
-  // get the part; no need to subset
-  const stk::mesh::Part *fromTargetPart = fromMetaData.get_part(fromName);
-  if ( NULL == fromTargetPart )
-    throw std::runtime_error("from target part in xfer is NULL");
-  const stk::mesh::Part *toTargetPart = toMetaData.get_part(toName);
-  if ( NULL == toTargetPart )
-    throw std::runtime_error("to target part in xfer is NULL");
+  // to mesh parts
+  for ( size_t k = 0; k < toPartNameVec_.size(); ++k ) {
+    // get the part; no need to subset
+    stk::mesh::Part *toTargetPart = toMetaData.get_part(toPartNameVec_[k]);
+    if ( NULL == toTargetPart )
+      throw std::runtime_error("to target part in xfer is NULL; check: " + toPartNameVec_[k]);
+    else
+      toPartVec_.push_back(toTargetPart);
+  }
 
-  meshPartPair_ = std::make_pair(fromTargetPart, toTargetPart);
-
-  // could extract the fields from the realm now and save them off.... STATE....
+  // could extract the fields from the realm now and save them off?... 
+  // FIXME: deal with STATE....
 
   // output
   const bool doOutput = true;
@@ -254,9 +305,12 @@ Transfer::breadboard()
     NaluEnv::self().naluOutputP0() << "the From realm name is: " << fromRealm_->name_ << std::endl;
     NaluEnv::self().naluOutputP0() << "the To realm name is: " << toRealm_->name_ << std::endl;
 
-    // extract mesh part names for the user
-    NaluEnv::self().naluOutputP0() << "the From mesh part name is: " << meshPartPair_.first->name() << std::endl;
-    NaluEnv::self().naluOutputP0() << "the To mesh part name is: " << meshPartPair_.second->name() << std::endl;
+    // provide mesh part names for the user
+    NaluEnv::self().naluOutputP0() << "From/To Part Review: " << std::endl;
+    for ( size_t k = 0; k < fromPartVec_.size(); ++k )
+      NaluEnv::self().naluOutputP0() << "the From mesh part name is: " << fromPartVec_[k]->name() << std::endl;
+    for ( size_t k = 0; k < toPartVec_.size(); ++k )
+      NaluEnv::self().naluOutputP0() << "the To mesh part name is: " << toPartVec_[k]->name() << std::endl;
     
     // provide field names
     for( std::vector<std::pair<std::string, std::string> >::const_iterator i_var = transferVariablesPairName_.begin();
@@ -267,6 +321,9 @@ Transfer::breadboard()
   }
 }
 
+//--------------------------------------------------------------------------
+//-------- allocate_stk_transfer -------------------------------------------
+//--------------------------------------------------------------------------
 void Transfer::allocate_stk_transfer() {
 
   const stk::mesh::MetaData    &fromMetaData = fromRealm_->meta_data();
@@ -276,7 +333,7 @@ void Transfer::allocate_stk_transfer() {
   const stk::ParallelMachine    &fromComm    = fromRealm_->bulk_data().parallel();
 
   boost::shared_ptr<FromMesh >
-    from_mesh (new FromMesh(fromMetaData, fromBulkData, *fromRealm_, fromcoordName, FromVar, meshPartPair_.first, fromComm));
+    from_mesh (new FromMesh(fromMetaData, fromBulkData, *fromRealm_, fromcoordName, FromVar, fromPartVec_, fromComm));
 
   stk::mesh::MetaData    &toMetaData = toRealm_->meta_data();
   stk::mesh::BulkData    &toBulkData = toRealm_->bulk_data();
@@ -285,7 +342,7 @@ void Transfer::allocate_stk_transfer() {
   const stk::ParallelMachine    &toComm    = toRealm_->bulk_data().parallel();
 
   boost::shared_ptr<ToMesh >
-    to_mesh (new ToMesh(toMetaData, toBulkData, tocoordName, toVar, meshPartPair_.second, toComm));
+    to_mesh (new ToMesh(toMetaData, toBulkData, *toRealm_, tocoordName, toVar, toPartVec_, toComm));
 
   typedef stk::transfer::GeometricTransfer< class LinInterp< class FromMesh, class ToMesh > > STKTransfer;
 
@@ -301,6 +358,9 @@ void Transfer::allocate_stk_transfer() {
   transfer_.reset(new STKTransfer(from_mesh, to_mesh, name_, expansionFactor, searchMethod));
 }
 
+//--------------------------------------------------------------------------
+//-------- ghost_from_elements ---------------------------------------------
+//--------------------------------------------------------------------------
 void Transfer::ghost_from_elements()
 {
   typedef stk::transfer::GeometricTransfer< class LinInterp< class FromMesh, class ToMesh > > STKTransfer;
@@ -327,6 +387,7 @@ Transfer::initialize_begin()
   time += stk::cpu_time();
   fromRealm_->timerTransferSearch_ += time;
 }
+
 //--------------------------------------------------------------------------
 //--------------------------------------------------------------------------
 void
@@ -334,6 +395,7 @@ Transfer::change_ghosting()
 {
   ghost_from_elements();
 }
+
 //--------------------------------------------------------------------------
 //-------- initialize_end ------------------------------------------------------
 //--------------------------------------------------------------------------

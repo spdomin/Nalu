@@ -83,6 +83,8 @@ AssembleMomentumWallFunctionSolverAlgorithm::execute()
   // space for LHS/RHS; nodesPerFace*nDim*nodesPerFace*nDim and nodesPerFace*nDim
   std::vector<double> lhs;
   std::vector<double> rhs;
+  std::vector<int> scratchIds;
+  std::vector<double> scratchVals;
   std::vector<stk::mesh::Entity> connected_nodes;
 
   // bip values
@@ -122,12 +124,18 @@ AssembleMomentumWallFunctionSolverAlgorithm::execute()
     // face master element
     MasterElement *meFC = realm_.get_surface_master_element(b.topology());
     const int nodesPerFace = meFC->nodesPerElement_;
+    const int numScsBip = meFC->numIntPoints_;
+
+    // mapping from ip to nodes for this ordinal; face perspective (use with face_node_relations)
+    const int *faceIpNodeMap = meFC->ipNodeMap();
 
     // resize some things; matrix related
     const int lhsSize = nodesPerFace*nDim*nodesPerFace*nDim;
     const int rhsSize = nodesPerFace*nDim;
     lhs.resize(lhsSize);
     rhs.resize(rhsSize);
+    scratchIds.resize(rhsSize);
+    scratchVals.resize(rhsSize);
     connected_nodes.resize(nodesPerFace);
 
     // algorithm related; element
@@ -135,7 +143,7 @@ AssembleMomentumWallFunctionSolverAlgorithm::execute()
     ws_bcVelocity.resize(nodesPerFace*nDim);
     ws_density.resize(nodesPerFace);
     ws_viscosity.resize(nodesPerFace);
-    ws_face_shape_function.resize(nodesPerFace*nodesPerFace);
+    ws_face_shape_function.resize(numScsBip*nodesPerFace);
 
     // pointers
     double *p_lhs = &lhs[0];
@@ -193,12 +201,12 @@ AssembleMomentumWallFunctionSolverAlgorithm::execute()
       const double *wallFrictionVelocityBip = stk::mesh::field_data(*wallFrictionVelocityBip_, face);
 
       // loop over face nodes
-      for ( int ip = 0; ip < nodesPerFace; ++ip ) {
+      for ( int ip = 0; ip < numScsBip; ++ip ) {
 
-        // nearest node (to which we will assemble RHS); offsets
-        const int nearestNode = ip;
         const int offSetAveraVec = ip*nDim;
         const int offSetSF_face = ip*nodesPerFace;
+
+        const int localFaceNode = faceIpNodeMap[ip];
 
         // zero out vector quantities; squeeze in aMag
         double aMag = 0.0;
@@ -264,7 +272,7 @@ AssembleMomentumWallFunctionSolverAlgorithm::execute()
         // start the lhs assembly
         for ( int i = 0; i < nDim; ++i ) {
 
-          int indexR = nearestNode*nDim + i;
+          int indexR = localFaceNode*nDim + i;
           int rowR = indexR*nodesPerFace*nDim;
 
           double uiTan = 0.0;
@@ -289,7 +297,7 @@ AssembleMomentumWallFunctionSolverAlgorithm::execute()
         }
       }
 
-      apply_coeff(connected_nodes, rhs, lhs, __FILE__);
+      apply_coeff(connected_nodes, scratchIds, scratchVals, rhs, lhs, __FILE__);
 
     }
   }
