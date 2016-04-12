@@ -53,6 +53,6 @@ class OversetInfo {
 };
   
 } // end sierra namespace
-} // end nalu namespace
+} // end naluUnit namespace
 
 #endif

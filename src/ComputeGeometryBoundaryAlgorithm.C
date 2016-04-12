@@ -83,12 +83,12 @@ ComputeGeometryBoundaryAlgorithm::execute()
       double * areaVec = stk::mesh::field_data(*exposedAreaVec, b, k);
 
       // face node relations for nodal gather
-      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(b,k);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(b,k);;
 
       //===============================================
       // gather nodal data; this is how we do it now..
       //===============================================
-      int num_nodes = realm_.num_nodes_all(b,k);
+      int num_nodes = realm_.num_side_nodes_all(b,k);
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = face_node_rels[ni];
         double * coords = stk::mesh::field_data(*coordinates, node);

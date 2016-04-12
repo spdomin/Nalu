@@ -14,6 +14,9 @@
 #include <SupplementalAlgorithm.h>
 #include <TimeIntegrator.h>
 #include <master_element/MasterElement.h>
+#include <element_promotion/QuadratureKernels.h>
+#include <element_promotion/ElementDescription.h>
+#include <nalu_make_unique.h>
 
 // stk_mesh/base/fem
 #include <stk_mesh/base/BulkData.hpp>
@@ -21,6 +24,8 @@
 #include <stk_mesh/base/GetBuckets.hpp>
 #include <stk_mesh/base/MetaData.hpp>
 #include <stk_mesh/base/Part.hpp>
+
+#include <memory>
 
 namespace sierra{
 namespace nalu{
@@ -85,6 +90,9 @@ protected:
   const int nDim_;
   int numScsIp_;
   int nodesPerElement_;
+  std::unique_ptr<SGLQuadratureOps> quadOp_;
+  int numLines_;
+  int ipsPerFace_;
 
 public:
   ScalarElemDiffusionFunctor(
@@ -110,7 +118,13 @@ public:
       nDim_(nDim),
       numScsIp_(0),
       nodesPerElement_(0)
+
   {
+    if (realm_.using_SGL_quadrature()) {
+      quadOp_ = make_unique<SGLQuadratureOps>(*realm_.elem_);
+      numLines_ = nDim_ * realm_.elem_->polyOrder;
+      ipsPerFace_ = (nDim_ == 2) ? realm_.elem_->nodes1D : realm_.elem_->nodes1D*realm_.elem_->nodes1D;
+    }
   }
 
   virtual void bind_data(stk::mesh::Bucket & b,
@@ -202,7 +216,7 @@ public:
 
   void operator()(int elem_offset){
     // get nodes
-    stk::mesh::Entity const * node_rels = realm_.begin_nodes_all(*b_,elem_offset);
+    stk::mesh::Entity const * node_rels = b_->begin_nodes(elem_offset);
 
     // temporary arrays
     double p_scalarQ[nodesPerElement_];
@@ -286,6 +300,196 @@ public:
 
   }
 
+};
+
+
+class CVFEMScalarElemDiffusionFunctorSGL: public ScalarElemDiffusionFunctor{
+
+  double * p_shape_function_;
+  double * p_scs_areav_;
+  double * p_dndx_;
+  double * p_deriv_;
+  double * p_det_j_;
+  double * p_lhs_integrand_;
+  double * p_rhs_integrand_;
+  double * p_lhs_integrated_;
+  double * p_rhs_integrated_;
+
+public:
+  CVFEMScalarElemDiffusionFunctorSGL(
+      Realm& realm,
+      stk::mesh::BulkData & bulk_data,
+      stk::mesh::MetaData & meta_data,
+      ScalarFieldType & scalarQ,
+      ScalarFieldType & diffFluxCoeff,
+      VectorFieldType & coordinates,
+      int nDim):
+      ScalarElemDiffusionFunctor(realm, bulk_data, meta_data,
+        scalarQ, diffFluxCoeff, coordinates, nDim),
+      p_shape_function_(nullptr),
+      p_scs_areav_(nullptr),
+      p_dndx_(nullptr),
+      p_deriv_(nullptr),
+      p_det_j_(nullptr),
+      p_lhs_integrand_(nullptr),
+      p_rhs_integrand_(nullptr),
+      p_lhs_integrated_(nullptr),
+      p_rhs_integrated_(nullptr)
+  {
+
+  }
+
+  virtual ~CVFEMScalarElemDiffusionFunctorSGL(){}
+
+  virtual void bind_data(stk::mesh::Bucket & b,
+    MasterElement & meSCS,
+    double * p_lhs,
+    double * p_rhs,
+    std::vector<stk::mesh::Entity> & connected_nodes)
+  {
+    ScalarElemDiffusionFunctor::bind_data(b, meSCS, p_lhs, p_rhs, connected_nodes);
+
+    // have to remove most VLAs since they can become too large with P-refinement
+
+    p_shape_function_ = new double[numScsIp_ * nodesPerElement_];
+    p_scs_areav_ = new double[numScsIp_ * nDim_];
+    p_dndx_ = new double[nDim_ * numScsIp_ * nodesPerElement_];
+    p_deriv_ = new double[nDim_ * numScsIp_ * nodesPerElement_];
+    p_det_j_ = new double[numScsIp_];
+    p_lhs_integrand_ = new double[numScsIp_*nodesPerElement_];
+    p_lhs_integrated_ = new double[numScsIp_*nodesPerElement_];
+    p_rhs_integrand_ = new double[numScsIp_];
+    p_rhs_integrated_ = new double[numScsIp_];
+
+    meSCS_->shape_fcn(&p_shape_function_[0]);
+  }
+
+  virtual void release_data()
+  {
+    delete[] p_rhs_integrated_;
+    delete[] p_lhs_integrated_;
+    delete[] p_rhs_integrand_;
+    delete[] p_lhs_integrand_;
+    delete[] p_det_j_;
+    delete[] p_deriv_;
+    delete[] p_dndx_;
+    delete[] p_scs_areav_;
+    delete[] p_shape_function_;
+  }
+
+  void operator()(int elem_offset){
+    // get nodes
+    stk::mesh::Entity const * node_rels = b_->begin_nodes(elem_offset);
+
+    // temporary arrays
+    double p_scalarQ[nodesPerElement_];
+    double p_diffFluxCoeff[nodesPerElement_];
+    double p_coordinates[nodesPerElement_*nDim_];
+
+    const int lhsSize = nodesPerElement_*nodesPerElement_;
+    const int rhsSize = nodesPerElement_;
+
+    // zero lhs/rhs
+    for ( int p = 0; p < lhsSize; ++p ) {
+      p_lhs_[p] = 0.0;
+    }
+
+    for ( int p = 0; p < rhsSize; ++p ) {
+      p_rhs_[p] = 0.0;
+    }
+
+    for ( int ni = 0; ni < nodesPerElement_; ++ni ) {
+      stk::mesh::Entity node = node_rels[ni];
+
+      // set connected nodes
+      (*p_connected_nodes_)[ni] = node;
+
+      const double * coords = stk::mesh::field_data(coordinates_, node );
+
+      // gather scalars
+      p_scalarQ[ni] = *stk::mesh::field_data(scalarQ_, node );
+      p_diffFluxCoeff[ni] = *stk::mesh::field_data(diffFluxCoeff_, node);
+
+      // gather vectors
+      const int offSet = ni*nDim_;
+      for ( int j=0; j < nDim_; ++j ) {
+        p_coordinates[offSet+j] = coords[j];
+      }
+    }
+
+    double scs_error = 0.0;
+    meSCS_->determinant(1, p_coordinates, p_scs_areav_, &scs_error);
+    meSCS_->grad_op(1, p_coordinates, p_dndx_, p_deriv_, p_det_j_, &scs_error);
+
+    // gather both the LHS and RHS contributions of the individual ips
+    for (int ip = 0; ip < numScsIp_; ++ip) {
+      double muIp = 0.0;
+      const int offSetSF = ip * nodesPerElement_;
+      for (int ic = 0; ic < nodesPerElement_; ++ic) {
+        const double r = p_shape_function_[offSetSF + ic];
+        muIp += r * p_diffFluxCoeff[ic];
+      }
+
+      double qDiff = 0.0;
+      for (int ic = 0; ic < nodesPerElement_; ++ic) {
+        double lhsfacDiff = 0.0;
+        const int offSetDnDx = nDim_ * nodesPerElement_ * ip + ic * nDim_;
+        for (int j = 0; j < nDim_; ++j) {
+          lhsfacDiff += -muIp * p_dndx_[offSetDnDx + j] * p_scs_areav_[ip * nDim_ + j];
+        }
+        p_lhs_integrand_[ic*numScsIp_+ip] = lhsfacDiff;
+
+        qDiff += lhsfacDiff * p_scalarQ[ic];
+      }
+      p_rhs_integrand_[ip] = qDiff;
+    }
+
+    // integrate over the IPs
+    // Needs to be done for each node (?) for the LHS
+    int node_offset = 0;
+    for (int ic = 0; ic < nodesPerElement_; ++ic) {
+      int line_offset = 0;
+      for (int lineNumber = 0; lineNumber < numLines_; ++lineNumber) {
+        if (nDim_ == 2) {
+          quadOp_->surface_2D(p_lhs_integrand_, p_lhs_integrated_, node_offset+line_offset);
+        }
+        else {
+          quadOp_->surface_3D(p_lhs_integrand_, p_lhs_integrated_, node_offset+line_offset);
+        }
+        line_offset += ipsPerFace_;
+      }
+      node_offset += numScsIp_;
+    }
+
+    // RHS
+    int line_offset = 0;
+    for (int lineNumber = 0; lineNumber < numLines_; ++lineNumber) {
+      if (nDim_ == 2) {
+        quadOp_->surface_2D(p_rhs_integrand_, p_rhs_integrated_, line_offset);
+      }
+      else {
+        quadOp_->surface_3D(p_rhs_integrand_, p_rhs_integrated_, line_offset);
+      }
+      line_offset += ipsPerFace_;
+    }
+
+    // scatter
+    for ( int ip = 0; ip < numScsIp_; ++ip ) {
+      const int il = lrscv[2*ip];
+      const int ir = lrscv[2*ip+1];
+
+      const int rowL = il*nodesPerElement_;
+      const int rowR = ir*nodesPerElement_;
+
+      for ( int ic = 0; ic < nodesPerElement_; ++ic ) {
+        auto lhsDiff = p_lhs_integrated_[ic*numScsIp_+ip];
+        p_lhs_[rowL+ic] += lhsDiff;
+        p_lhs_[rowR+ic] -= lhsDiff;
+      }
+      p_rhs_[il] -= p_rhs_integrated_[ip];
+      p_rhs_[ir] += p_rhs_integrated_[ip];
+    }
+  }
 };
 
 class CollocationScalarElemDiffusionFunctor: public ScalarElemDiffusionFunctor{

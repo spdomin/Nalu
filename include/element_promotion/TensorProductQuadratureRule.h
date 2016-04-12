@@ -23,9 +23,9 @@ public:
   );
   ~TensorProductQuadratureRule() {};
 
-  std::vector<double>& abscissae() { return abscissae_; };
-  std::vector<double>& weights() { return weights_; };
-  std::vector<double>& scsEndLoc() { return scsEndLoc_; };
+  const std::vector<double>& abscissae() const { return abscissae_; };
+  const std::vector<double>& weights() const { return weights_; };
+  const std::vector<double>& scsEndLoc() const { return scsEndLoc_; };
 
   double abscissa(unsigned j) const { return abscissae_[j]; };
   double weight(unsigned j) const { return weights_[j]; };
@@ -50,9 +50,11 @@ public:
     const double xi) const;
 
 private:
+  int numQuad_;
   std::vector<double> abscissae_;
   std::vector<double> weights_;
   std::vector<double> scsEndLoc_;
+  bool useSGL_;
 };
 
 } // namespace nalu

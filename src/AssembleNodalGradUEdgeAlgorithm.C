@@ -76,10 +76,10 @@ AssembleNodalGradUEdgeAlgorithm::execute()
     double * av = stk::mesh::field_data(*edgeAreaVec_, b);
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
 
-      stk::mesh::Entity const * edge_node_rels = realm_.begin_nodes_all(b,k);
+      stk::mesh::Entity const * edge_node_rels = b.begin_nodes(k);
 
       // sanity check on number or nodes
-      ThrowAssert( realm_.num_nodes_all(b,k) == 2 );
+      ThrowAssert( b.num_nodes(k) == 2 );
 
       // left and right nodes
       stk::mesh::Entity nodeL = edge_node_rels[0];

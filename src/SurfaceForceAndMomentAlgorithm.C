@@ -220,7 +220,7 @@ SurfaceForceAndMomentAlgorithm::execute()
       stk::mesh::Entity face = b[k];
 
       // face node relations
-      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
 
       //======================================
       // gather nodal data off of face
@@ -237,7 +237,7 @@ SurfaceForceAndMomentAlgorithm::execute()
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec_, face);
 
       // extract the connected element to this exposed face; should be single in size!
-      const stk::mesh::Entity* face_elem_rels = bulk_data.begin_elements(face);
+      const stk::mesh::Entity* face_elem_rels = realm_.face_elem_map(face);
       ThrowAssert( bulk_data.num_elements(face) == 1 );
 
       // get element; its face ordinal number
@@ -245,7 +245,7 @@ SurfaceForceAndMomentAlgorithm::execute()
       const int face_ordinal = bulk_data.begin_element_ordinals(face)[0];
 
       // get the relations off of element
-      stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(element);
+      stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(element);
 
       for ( int ip = 0; ip < numScsBip; ++ip ) {
 
@@ -442,7 +442,7 @@ SurfaceForceAndMomentAlgorithm::pre_work()
       stk::mesh::Entity face = b[k];
 
       // face node relations
-      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
 
       // pointer to face data
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec_, face);

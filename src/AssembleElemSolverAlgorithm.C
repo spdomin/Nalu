@@ -117,8 +117,8 @@ AssembleElemSolverAlgorithm::execute()
       stk::mesh::Entity element = b[k];
 
       // extract node relations and provide connected nodes
-      stk::mesh::Entity const * node_rels = realm_.begin_nodes_all(b,k);
-      int num_nodes = realm_.num_nodes_all(b,k);
+      stk::mesh::Entity const * node_rels = b.begin_nodes(k);
+      int num_nodes = b.num_nodes(k);
 
       // sanity check on num nodes
       ThrowAssert( num_nodes == nodesPerElement );

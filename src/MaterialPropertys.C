@@ -21,9 +21,13 @@
 #include <yaml-cpp/yaml.h>
 #include <NaluParsing.h>
 
+// For naming convention
+#include <element_promotion/PromotedPartHelper.h>
+
 // basic c++
 #include <stdexcept>
 #include <map>
+#include <algorithm>
 
 namespace sierra{
 namespace nalu{
@@ -38,8 +42,7 @@ namespace nalu{
 //--------------------------------------------------------------------------
 MaterialPropertys::MaterialPropertys(Realm& realm)
   : realm_(realm),
-    propertyTableName_("na"),
-    promotionTag_("_promoted")
+    propertyTableName_("na")
 {
   // nothing to do
 }
@@ -86,18 +89,6 @@ MaterialPropertys::load(const YAML::Node & node)
       }
     }
     
-    // add node parts for promotion
-    if (realm_.doPromotion_) {
-      baseTargetNames_ = targetNames_;
-      promotedTargetNames_ = targetNames_;
-      for (auto& targetName : promotedTargetNames_) {
-        targetName += promotionTag_;
-      }
-      targetNames_.insert(
-        targetNames_.end(),promotedTargetNames_.begin(), promotedTargetNames_.end()
-      );
-    }
-
     // has a table?
     if ( (*y_material_propertys).FindValue("table_file_name")) {
       (*y_material_propertys)["table_file_name"] >> propertyTableName_;
@@ -353,6 +344,18 @@ MaterialPropertys::load(const YAML::Node & node)
       }  
     } 
   }
+}
+
+//--------------------------------------------------------------------------
+//-------- switch_to_super_element_target_names ----------------------------
+//--------------------------------------------------------------------------
+void
+MaterialPropertys::switch_to_super_element_target_names()
+{
+  std::transform(targetNames_.begin(), targetNames_.end(), targetNames_.begin(),
+    [](const std::string& name) {
+       return super_element_part_name(name);
+  });
 }
 
 Simulation* MaterialPropertys::root() { return parent()->root(); }

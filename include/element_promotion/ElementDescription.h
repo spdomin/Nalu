@@ -19,7 +19,7 @@ typedef std::vector<std::vector<size_t>> SubElementConnectivity;
 struct ElementDescription
 {
 public:
-  static std::unique_ptr<ElementDescription> create(int dimension, int order);
+  static std::unique_ptr<ElementDescription> create(int dimension, int order, std::string quadType = "GaussLegendre");
   virtual ~ElementDescription() = default;
 
   inline int tensor_product_node_map(int i, int j, int k) const
@@ -37,9 +37,18 @@ public:
     return nodeMapBC[i+nodes1D*j];
   }
 
-  inline int tensor_product_node_map(int i) const
+  inline int tensor_product_node_map_bc(int i) const
   {
     return nodeMapBC[i];
+  }
+
+  inline int tensor_index(int nodeNumber) const
+  {
+    const auto& ords = inverseNodeMap[nodeNumber];
+    if (dimension == 2) {
+      return (ords[0] + nodes1D*ords[1]);
+    }
+    return (ords[0] + nodes1D*(ords[1]+nodes1D*ords[2]));
   }
 
   inline double gauss_point_location(
@@ -85,7 +94,10 @@ public:
 
   size_t dimension;
   size_t nodes1D;
+  size_t nodesPerFace;
   size_t nodesPerElement;
+  size_t nodesInBaseElement;
+  size_t nodesPerSubElement;
   AddedConnectivityOrdinalMap addedConnectivities;
   AddedConnectivityOrdinalMap edgeNodeConnectivities;
   AddedConnectivityOrdinalMap faceNodeConnectivities;
@@ -93,7 +105,7 @@ public:
   AddedNodeLocationsMap locationsForNewNodes;
   SubElementConnectivity subElementConnectivity;
 
-  bool useGLLGLL;
+  std::string quadType;
   unsigned polyOrder;
   unsigned numQuad;
   std::unique_ptr<TensorProductQuadratureRule> quadrature;
@@ -112,7 +124,7 @@ protected:
 struct QuadMElementDescription: public ElementDescription
 {
 public:
-  QuadMElementDescription(std::vector<double> in_nodeLocs, std::vector<double> in_scsLoc);
+  QuadMElementDescription(std::vector<double> in_nodeLocs, std::vector<double> in_scsLoc, std::string quadType);
 private:
   void set_node_connectivity();
   void set_subelement_connectivity();
@@ -121,7 +133,7 @@ private:
 struct HexMElementDescription: public ElementDescription
 {
 public:
-  HexMElementDescription(std::vector<double> in_nodeLocs, std::vector<double> in_scsLoc);
+  HexMElementDescription(std::vector<double> in_nodeLocs, std::vector<double> in_scsLoc, std::string quadType);
 private:
   void set_node_connectivity();
   void set_subelement_connectivity();

@@ -62,13 +62,11 @@ class Adapter;
 class EquationSystems;
 class OutputInfo;
 class PostProcessingInfo;
-class SolutionNormPostProcessing;
 class PeriodicManager;
 class Realms;
 class Simulation;
 class SolutionOptions;
 class TimeIntegrator;
-class TurbulenceAveragingPostProcessing;
 class MasterElement;
 class PropertyEvaluator;
 class HDF5FilePtr;
@@ -76,6 +74,10 @@ class Transfer;
 class ElementDescription;
 class PromoteElement;
 class PromotedElementIO;
+
+class SolutionNormPostProcessing;
+class TurbulenceAveragingPostProcessing;
+class DataProbePostProcessing;
 
 class Realm {
  public:
@@ -167,6 +169,7 @@ class Realm {
   void initialize_contact();
   void initialize_non_conformal();
   void initialize_overset();
+  void initialize_post_processing_algorithms();
 
   void compute_geometry();
   void compute_vrtm();
@@ -406,6 +409,7 @@ class Realm {
   PostProcessingInfo *postProcessingInfo_;
   SolutionNormPostProcessing *solutionNormPostProcessing_;
   TurbulenceAveragingPostProcessing *turbulenceAveragingPostProcessing_;
+  DataProbePostProcessing *dataProbePostProcessing_;
 
   std::vector<Algorithm *> propertyAlg_;
   std::map<PropertyIdentifier, ScalarFieldType *> propertyMap_;
@@ -417,7 +421,9 @@ class Realm {
   SizeType nodeCount_;
   bool estimateMemoryOnly_;
   double availableMemoryPerCoreGB_;
-  double timerReadMesh_;
+  double timerCreateMesh_;
+  double timerPopulateMesh_;
+  double timerPopulateFieldData_;
   double timerOutputFields_;
   double timerCreateEdges_;
   double timerContact_;
@@ -425,6 +431,8 @@ class Realm {
   double timerPropertyEval_;
   double timerAdapt_;
   double timerTransferSearch_;
+  double timerTransferExecute_;
+  double timerSkinMesh_;
 
   ContactManager *contactManager_;
   NonConformalManager *nonConformalManager_;
@@ -487,27 +495,29 @@ class Realm {
   // Part holding added nodes
   stk::mesh::PartVector basePartVector_;
   stk::mesh::PartVector promotedPartVector_;
-
-  // Part holding added nodes BC
-  stk::mesh::PartVector bcPromotedPartVector_;
+  stk::mesh::PartVector superElemPartVector_;
 
   // element promotion tools
   bool doPromotion_;
   unsigned promotionOrder_;
+  std::string quadType_;
   double timerPromoteMesh_;
   std::unique_ptr<ElementDescription> elem_;
   std::unique_ptr<PromoteElement> promotion_;
   std::unique_ptr<PromotedElementIO> promotionIO_;
+  void setup_element_promotion();
   void promote_elements();
   void side_node_ordinals_all(
     const stk::topology& theElemTopo,
     unsigned face_ordinal,
     std::vector<int>& face_node_ordinal_vec) const;
-  stk::mesh::Entity const* begin_nodes_all(stk::mesh::Entity elem) const;
-  stk::mesh::Entity const* begin_nodes_all(const stk::mesh::Bucket& b, stk::mesh::EntityId offset) const;
-  unsigned num_nodes_all(const stk::mesh::Bucket& bucket,
+  stk::mesh::Entity const* begin_side_nodes_all(stk::mesh::Entity elem) const;
+  stk::mesh::Entity const* begin_side_nodes_all(const stk::mesh::Bucket& b, stk::mesh::EntityId offset) const;
+  unsigned num_side_nodes_all(const stk::mesh::Bucket& bucket,
     stk::mesh::EntityId id) const;
-  unsigned num_nodes_all(stk::mesh::Entity elem) const;
+  unsigned num_side_nodes_all(stk::mesh::Entity elem) const;
+  bool using_SGL_quadrature() const;
+  const stk::mesh::Entity* const face_elem_map(const stk::mesh::Entity& face) const;
 
   std::vector<AuxFunctionAlgorithm *> bcDataAlg_;
 

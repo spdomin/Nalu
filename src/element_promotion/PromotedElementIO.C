@@ -1,8 +1,10 @@
 #include <element_promotion/PromotedElementIO.h>
 
 #include <element_promotion/PromoteElement.h>
+#include <element_promotion/PromotedPartHelper.h>
 #include <element_promotion/ElementDescription.h>
 #include <nalu_make_unique.h>
+#include <NaluEnv.h>
 
 #include <stk_mesh/base/MetaData.hpp>
 #include <stk_mesh/base/Bucket.hpp>
@@ -38,17 +40,16 @@ namespace sierra{
 namespace nalu{
 
 PromotedElementIO::PromotedElementIO(
-  const PromoteElement& promoteElement,
+  const ElementDescription& elem,
   const stk::mesh::MetaData& metaData,
   const stk::mesh::BulkData& bulkData,
-  const VectorFieldType& coordinates,
+  const stk::mesh::PartVector& baseParts,
   const std::string& fileName
-) : promoteElement_(promoteElement),
+) : elem_(elem),
     metaData_(metaData),
     bulkData_(bulkData),
-    coordinates_(coordinates),
     fileName_(fileName),
-    elem_(promoteElement.element_description()),
+    coordinates_(metaData.coordinate_field()),
     nDim_(metaData.spatial_dimension())
 {
   databaseIO =
@@ -63,16 +64,10 @@ PromotedElementIO::PromotedElementIO(
 
   output_ = make_unique<Ioss::Region>(databaseIO, "HighOrderOutput"); //sink for databaseIO
 
-  const auto baseParts = promoteElement_.base_part_vector();
-//  ThrowRequireMsg(check_topology(baseParts),
-//    "Invalid topology for SubElement output: Only quads/Hexs are supported.");
-
-  const auto promotedParts = promoteElement_.promoted_part_vector();
-
   const stk::mesh::BucketVector& elem_buckets = bulkData_.get_buckets(
     stk::topology::ELEM_RANK, stk::mesh::selectUnion(baseParts));
 
-  size_t numSubElems = promoteElement_.num_sub_elements(metaData_,elem_buckets);
+  size_t numSubElems = num_sub_elements(metaData_, elem_buckets, elem_.polyOrder);
   std::vector<stk::mesh::EntityId> subElemIds(numSubElems);
 
   // generate new global ids.  Don't actually need to be unique for base element ids
@@ -82,15 +77,20 @@ PromotedElementIO::PromotedElementIO(
     subElemIds
   );
 
+  ThrowRequire(coordinates_ != nullptr);
+
+  auto superElemParts = super_elem_part_vector(baseParts);
+  ThrowAssertMsg(part_vector_is_valid(superElemParts), "Not all element parts have a super-element mirror");
+
   output_->begin_mode(Ioss::STATE_DEFINE_MODEL);
-  write_node_block_definitions(baseParts, promotedParts);
-  write_elem_block_definitions(baseParts);
+  write_node_block_definitions(superElemParts);
+  write_elem_block_definitions(superElemParts);
   write_sideset_definitions(baseParts);
   output_->end_mode(Ioss::STATE_DEFINE_MODEL);
 
   output_->begin_mode(Ioss::STATE_MODEL);
-  write_coordinate_list(baseParts,promotedParts);
-  write_element_connectivity(baseParts,subElemIds);
+  write_coordinate_list(superElemParts);
+  write_element_connectivity(superElemParts,subElemIds);
   write_sideset_connectivity(baseParts);
   output_->end_mode(Ioss::STATE_MODEL);
 }
@@ -104,7 +104,7 @@ PromotedElementIO::write_database_data(double currentTime)
 
     stk::mesh::BucketVector const& nodeBuckets = bulkData_.get_buckets(
       stk::topology::NODE_RANK, metaData_.universal_part());
-    size_t numNodes = promoteElement_.count_entities(nodeBuckets);
+    size_t numNodes = count_entities(nodeBuckets);
 
     for (const auto* fieldPtr : fields_) {
       const stk::mesh::FieldBase& field = *fieldPtr;
@@ -173,18 +173,18 @@ PromotedElementIO::write_elem_block_definitions(
       const auto& selector     = *ip & metaData_.locally_owned_part();
       const auto& elemBuckets  = bulkData_.get_buckets(
         stk::topology::ELEM_RANK, selector);
-      const size_t numSubElems = promoteElement_.num_sub_elements(
-        metaData_,elemBuckets);
+      const size_t numSubElems = num_sub_elements(metaData_,elemBuckets, elem_.polyOrder);
+      const auto* baseElemPart = base_elem_part_from_super_elem_part(*ip);
 
       auto block = make_unique<Ioss::ElementBlock>(
         databaseIO,
-        ip->name(),
-        ip->topology().name(),
+        baseElemPart->name(),
+        baseElemPart->topology().name(),
         numSubElems
       );
       ThrowRequireMsg(block != nullptr, "Element block creation failed");
 
-      auto result = elementBlockPointers_.insert({ip,block.get()});
+      auto result = elementBlockPointers_.insert({ip, block.get()});
       ThrowRequireMsg(result.second, "Attempted to add redundant part");
 
       output_->add(block.release());
@@ -194,14 +194,11 @@ PromotedElementIO::write_elem_block_definitions(
 //--------------------------------------------------------------------------
 void
 PromotedElementIO::write_node_block_definitions(
-  const stk::mesh::PartVector&  /*baseParts*/,
-  const stk::mesh::PartVector&  /*promotedParts*/)
+  const stk::mesh::PartVector& superElemParts)
 {
-  auto& all_nodes = metaData_.universal_part();
-
   const auto& nodeBuckets = bulkData_.get_buckets(
-    stk::topology::NODE_RANK, all_nodes);
-  auto nodeCount = promoteElement_.count_entities(nodeBuckets);
+    stk::topology::NODE_RANK, stk::mesh::selectUnion(superElemParts));
+  auto nodeCount = count_entities(nodeBuckets);
   auto nodeBlock = make_unique<Ioss::NodeBlock>(
     databaseIO, "nodeblock", nodeCount, nDim_);
   ThrowRequireMsg(nodeBlock != nullptr, "Node block creation failed");
@@ -237,10 +234,7 @@ PromotedElementIO::write_sideset_definitions(
         metaData_.side_rank(),
         selector
       );
-      const size_t numSubElemsInPart = promoteElement_.num_sub_elements(
-        metaData_,
-        sideBuckets
-      );
+      const size_t numSubElemsInPart = num_sub_elements(metaData_, sideBuckets, elem_.polyOrder);
 
       auto block = make_unique<Ioss::SideBlock>(
         databaseIO,
@@ -260,54 +254,13 @@ PromotedElementIO::write_sideset_definitions(
   }
 }
 //--------------------------------------------------------------------------
-bool
-PromotedElementIO::check_topology(const stk::mesh::PartVector& baseParts) const
-{
-  const auto validElemTopology = (nDim_ == 2) ?
-      stk::topology::QUAD_4_2D : stk::topology::HEX_8;
-
-  const auto validSideTopology = (nDim_ == 2) ?
-      stk::topology::LINE_2 : stk::topology::QUAD_4;
-
-  bool okTopo =  false;
-  for(const auto* ip : baseParts) {
-    auto validTopology = (ip->topology().rank() == metaData_.side_rank()) ?
-        validSideTopology : validElemTopology;
-
-    if (ip->topology().value() == validTopology) {
-      okTopo = true;
-    }
-    else {
-      std::cout << ip->topology().value() << std::endl;
-      return false;
-    }
-
-    for (const auto* subip : ip->subsets()) {
-      auto validTopology = (subip->topology().rank() == metaData_.side_rank()) ?
-          validSideTopology : validElemTopology;
-
-      if (subip->topology().value() == validTopology) {
-        okTopo = true;
-      }
-      else {
-        return false;
-      }
-    }
-  }
-  return okTopo;
-}
-//--------------------------------------------------------------------------
 void
-PromotedElementIO::write_coordinate_list(
-  const stk::mesh::PartVector&  /*baseParts*/,
-  const stk::mesh::PartVector&  /*promotedParts*/)
+PromotedElementIO::write_coordinate_list(const stk::mesh::PartVector& superElemParts)
 {
-  auto& all_nodes = metaData_.universal_part();
-
   const auto& nodeBuckets =
-      bulkData_.get_buckets(stk::topology::NODE_RANK, all_nodes);
+      bulkData_.get_buckets(stk::topology::NODE_RANK, stk::mesh::selectUnion(superElemParts));
 
-  auto nodeCount = promoteElement_.count_entities(nodeBuckets);
+  auto nodeCount = count_entities(nodeBuckets);
 
   std::vector<int> node_ids;
   std::vector<double> coordvec;
@@ -321,7 +274,7 @@ PromotedElementIO::write_coordinate_list(
       const auto& node = b[k];
       node_ids.push_back(bulkData_.identifier(node));
       const double* coords =
-          static_cast<double*>(stk::mesh::field_data(coordinates_,node));
+          static_cast<double*>(stk::mesh::field_data(*coordinates_,node));
 
       for (unsigned j = 0; j < nDim_; ++j) {
         coordvec.push_back(coords[j]);
@@ -353,9 +306,8 @@ PromotedElementIO::write_element_connectivity(
     const auto& elemBuckets =
         bulkData_.get_buckets(stk::topology::ELEM_RANK, selector);
 
-    const size_t numberSubElementsInBlock =
-        promoteElement_.num_sub_elements(metaData_,elemBuckets);
-    const unsigned nodesPerLinearElem = part.topology().num_nodes();
+    const size_t numberSubElementsInBlock = num_sub_elements(metaData_, elemBuckets, elem_.polyOrder);
+    const unsigned nodesPerLinearElem = elem_.nodesPerSubElement; //FIXME(rcknaus): hex/quad specific
 
     std::vector<int> connectivity(nodesPerLinearElem*numberSubElementsInBlock);
     std::vector<int> globalSubElementIds(numberSubElementsInBlock);
@@ -366,7 +318,7 @@ PromotedElementIO::write_element_connectivity(
       const stk::mesh::Bucket& b = *ib;
       const auto length = b.size();
       for (size_t k = 0; k < length; ++k) {
-        const auto* node_rels = promoteElement_.begin_nodes_all(b[k]);
+        const auto* node_rels = b.begin_nodes(k);
         const auto& subElems = subConnectivity;
         const auto numberSubElements = subElems.size();
 
