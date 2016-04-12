@@ -52,10 +52,10 @@ class PromotedElementIO
 public:
   // constructor/destructor
   PromotedElementIO(
-    const PromoteElement& promoteElement,
+    const ElementDescription& elem,
     const stk::mesh::MetaData& metaData,
     const stk::mesh::BulkData& bulkData,
-    const VectorFieldType& coordinates,
+    const stk::mesh::PartVector& baseParts,
     const std::string& fileName
   );
 
@@ -74,16 +74,12 @@ public:
 
   size_t sub_element_global_id() const;
   void write_node_block_definitions(
-    const stk::mesh::PartVector& baseParts,
-    const stk::mesh::PartVector& promotedParts);
+      const stk::mesh::PartVector& superElemParts);
   void write_elem_block_definitions(const stk::mesh::PartVector& baseParts);
   void write_sideset_definitions(const stk::mesh::PartVector& baseParts);
-  void write_coordinate_list(
-    const stk::mesh::PartVector& baseParts,
-    const stk::mesh::PartVector& promotedParts);
+  void write_coordinate_list(const stk::mesh::PartVector& superElemParts);
 
   void add_fields(const std::vector<stk::mesh::FieldBase*>& fields);
-  bool check_topology(const stk::mesh::PartVector& baseParts) const;
   int maximum_field_length(const stk::mesh::FieldBase& field) const;
 
   template<typename T> void
@@ -96,12 +92,11 @@ public:
   std::string storage_name(const stk::mesh::FieldBase& field) const;
 
   // meta, bulk and io
-  const PromoteElement& promoteElement_;
+  const ElementDescription& elem_;
   const stk::mesh::MetaData& metaData_;
   const stk::mesh::BulkData& bulkData_;
-  const VectorFieldType& coordinates_;
   const std::string& fileName_;
-  const ElementDescription& elem_;
+  const stk::mesh::FieldBase* coordinates_;
   const unsigned nDim_;
 
   struct FieldNameHash {

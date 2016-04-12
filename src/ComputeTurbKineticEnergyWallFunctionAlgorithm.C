@@ -84,7 +84,6 @@ ComputeTurbKineticEnergyWallFunctionAlgorithm::execute()
         ib != face_buckets.end() ; ++ib ) {
     stk::mesh::Bucket & b = **ib ;
 
-    // face master element; only need the face topo
     const stk::mesh::Bucket::size_type length   = b.size();
 
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
@@ -93,8 +92,8 @@ ComputeTurbKineticEnergyWallFunctionAlgorithm::execute()
       stk::mesh::Entity face = b[k];
 
       // get relations to nodes
-      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
-      const int nodesPerFace = realm_.num_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
+      const int nodesPerFace = realm_.num_side_nodes_all(face);
 
       // pointer to face data
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec_, face);

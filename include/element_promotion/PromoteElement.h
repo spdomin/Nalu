@@ -16,6 +16,7 @@
 #include <stk_mesh/base/Field.hpp>
 #include <stk_mesh/base/Selector.hpp>
 #include <stk_mesh/base/Types.hpp>
+#include <stk_mesh/base/HashEntityAndEntityKey.hpp>
 
 #include <boost/functional/hash/hash.hpp>
 
@@ -42,9 +43,6 @@ typedef stk::mesh::Field<double, stk::mesh::Cartesian>  VectorFieldType;
 namespace sierra {
 namespace nalu {
 
-  std::string promote_part_name(const std::string& base_name);
-  stk::mesh::Part* promoted_part(const stk::mesh::Part& part);
-
 class PromoteElement
 {
 public:
@@ -54,14 +52,13 @@ public:
   void promote_elements(
     const stk::mesh::PartVector& baseParts,
     VectorFieldType& coordinates,
-    stk::mesh::BulkData& mesh,
-    stk::mesh::PartVector& promotedParts
+    stk::mesh::BulkData& mesh
   );
 
-  size_t num_sub_elements(
-    const stk::mesh::MetaData& metaData,
-    const stk::mesh::BucketVector& buckets) const;
-  size_t count_entities(const stk::mesh::BucketVector& buckets) const;
+  void populate_boundary_elem_node_relations(
+    const stk::mesh::BulkData& mesh,
+    const stk::mesh::PartVector& mesh_parts
+  );
 
   const ElementDescription& element_description() const { return elemDescription_; };
   stk::mesh::PartVector base_part_vector() const { return baseParts_; };
@@ -70,15 +67,51 @@ public:
   unsigned added_nodes_per_element() const { return (elemDescription_.addedConnectivities.size()); };
   unsigned base_nodes_per_element() const { return (nodes_per_element()-added_nodes_per_element()); };
 
-  stk::mesh::Entity const* begin_nodes_all(const stk::mesh::Bucket& bucket, stk::mesh::EntityId id) const;
-  stk::mesh::Entity const* begin_nodes_all(const stk::mesh::Entity& elem) const;
-  stk::mesh::Entity const* begin_elems_all(const stk::mesh::Bucket& bucket, stk::mesh::EntityId id) const;
-  stk::mesh::Entity const* begin_elems_all(const stk::mesh::Entity& elem) const;
-  stk::mesh::Entity const* begin_side_elems_all(const stk::mesh::Bucket& bucket, stk::mesh::EntityId id) const;
-  stk::mesh::Entity const* begin_side_elems_all(const stk::mesh::Entity& elem) const;
+  stk::mesh::Entity const* begin_side_nodes_all(const stk::mesh::Bucket& bucket, stk::mesh::EntityId id) const
+  {
+    return (elemNodeMapBC_.at(bucket[id]).data());
+  }
+  stk::mesh::Entity const* begin_side_nodes_all(const stk::mesh::Entity& elem) const
+  {
+    return (elemNodeMapBC_.at(elem).data());
+  }
+  stk::mesh::Entity const* begin_elems_all(const stk::mesh::Bucket& bucket, stk::mesh::EntityId id) const
+  {
+    return (nodeElemMap_.at(bucket[id]).data());
+  }
+  stk::mesh::Entity const* begin_elems_all(const stk::mesh::Entity& node) const
+  {
+    return (nodeElemMap_.at(node).data());
+  }
+  stk::mesh::Entity const* begin_side_elems_all(const stk::mesh::Bucket& bucket, stk::mesh::EntityId id) const
+  {
+    return (nodeElemMapBC_.at(bucket[id]).data());
+  }
+  stk::mesh::Entity const* begin_side_elems_all(const stk::mesh::Entity& elem) const
+  {
+    return (nodeElemMapBC_.at(elem).data());
+  }
 
-  size_t num_elems(const stk::mesh::Entity& node) const;
-  size_t num_nodes(const stk::mesh::Entity& elem) const;
+  stk::mesh::Entity const* begin_super_elements(const stk::mesh::Entity& face) const
+  {
+    return (exposedFaceToSuperElemMap_.at(face).data());
+  }
+
+  size_t num_elems(const stk::mesh::Entity& node) const
+  {
+    return (nodeElemMap_.at(node).size());
+  }
+
+  size_t num_side_elems(const stk::mesh::Entity& node) const
+  {
+    return (nodeElemMapBC_.at(node).size());
+  }
+
+  size_t num_side_nodes(const stk::mesh::Entity& elem) const
+  {
+    return (elemNodeMapBC_.at(elem).size());
+  }
+
 private:
   class ChildNodeRequest
   {
@@ -98,7 +131,7 @@ private:
     ) const;
     void add_shared_elem(const stk::mesh::Entity& elem) const;
 
-    std::vector<size_t> determine_child_node_ordinal(
+    std::vector<size_t> determine_child_node_ordinals(
       const stk::mesh::BulkData& mesh,
       const ElementDescription& elemDesc,
       unsigned elemNumber) const;
@@ -106,10 +139,10 @@ private:
     void set_num_children(size_t num) const
     {
       children_.resize(num);
-      idProcPairsFromAllProcs_.resize(num);
+      procGIdPairsFromAllProcs_.resize(num);
     }
 
-    stk::mesh::PartVector determine_parent_parts(
+    stk::mesh::PartVector mesh_parts_for_child_nodes(
       const stk::mesh::BulkData& mesh,
       stk::mesh::PartVector base_parts) const;
 
@@ -120,7 +153,7 @@ private:
     stk::mesh::EntityId suggested_node_id(int childNumber) const;
     stk::mesh::EntityId get_id_for_child(int childNumber) const;
 
-    const std::vector<stk::mesh::EntityId> parentIds_; // invariant
+    std::vector<stk::mesh::EntityId> parentIds_; // invariant
     mutable std::vector<stk::mesh::EntityId> unsortedParentIds_;
     mutable std::vector<stk::mesh::Entity> children_;
     mutable std::vector<std::vector<size_t>> childOrdinalsForElem_;
@@ -129,31 +162,44 @@ private:
     mutable std::vector<int> sharingProcs_;
 
     using IdProcPair = std::pair<int,stk::mesh::EntityId>;
-    mutable std::vector<std::vector<IdProcPair>> idProcPairsFromAllProcs_;
-  };
-
-  struct EntityHash
-  {
-    std::size_t operator()(const stk::mesh::Entity& entity) const
-    {
-      return std::hash<size_t>()(entity.local_offset());
-    }
+    mutable std::vector<std::vector<IdProcPair>> procGIdPairsFromAllProcs_;
   };
 
   struct RequestHash
   {
     std::size_t operator()(const ChildNodeRequest& request) const
     {
+      // Order-sensitive hash function hash({1,2}) != hash({2,1})
       return boost::hash_range(request.parentIds_.begin(), request.parentIds_.end());
     }
   };
-  using NodeRequests = std::unordered_set<ChildNodeRequest, RequestHash>;
-  using ElemRelationsMap =
-      std::unordered_map<
-      stk::mesh::Entity, std::vector<stk::mesh::Entity>,
-      EntityHash>;
 
-  bool check_elem_node_relations(const stk::mesh::BulkData& mesh) const;
+  struct EntityVecIdHash
+  {
+    std::size_t operator()(const std::vector<stk::mesh::EntityId>& ids) const
+    {
+      // Order-sensitive hash function hash({1,2}) != hash({2,1})
+      return boost::hash_range(ids.begin(), ids.end());
+    }
+  };
+
+
+  using NodeRequests = std::unordered_set<ChildNodeRequest, RequestHash>;
+
+  using ElemRelationsMap =
+      std::unordered_map< stk::mesh::Entity,
+                          std::vector<stk::mesh::Entity> >;
+
+  using NodesElemMap = std::unordered_map< std::vector<stk::mesh::EntityId>,
+                                           stk::mesh::Entity,
+                                           EntityVecIdHash >;
+
+  using ExposedFaceElemMap = std::unordered_map<stk::mesh::Entity, std::vector<stk::mesh::Entity>>;
+
+  bool check_elem_node_relations(
+    const stk::mesh::BulkData& mesh,
+    ElemRelationsMap& elemNodeMap
+  ) const;
 
   template<typename T> std::vector<T>
   reorder_ordinals(
@@ -164,6 +210,23 @@ private:
      unsigned numAddedNodes1D
    ) const;
 
+  template<unsigned dimension>
+  void set_new_node_coords(
+    VectorFieldType& coordinates,
+    const ElementDescription& elemDescription,
+    const stk::mesh::BulkData& mesh,
+    const NodeRequests& requests,
+    const ElemRelationsMap& elemNodeMap) const;
+
+  template<unsigned embedding_dimension, unsigned dimension> void
+  set_coords_for_child(
+    const stk::mesh::BulkData& mesh,
+    VectorFieldType& coordinates,
+    const stk::mesh::Entity* node_rels,
+    const std::vector<size_t>& childOrdinals,
+    const std::vector<stk::mesh::EntityId>& parentNodeIds,
+    const std::vector<std::vector<double>>& isoParCoords) const;
+
   template<unsigned embedding_dimension, unsigned dimension>
   void interpolate_coords(
     const std::vector<double>& isoParCoord,
@@ -171,48 +234,72 @@ private:
     double* interpolatedCoords
   ) const;
 
-  template<unsigned dimension>
-  void set_new_node_coords(
-    VectorFieldType& coordinates,
-    const ElementDescription& elemDescription,
-    const stk::mesh::BulkData& mesh,
-    NodeRequests& requests
-  ) const;
-
-  template<unsigned embedding_dimension, unsigned dimension> void
-  set_coords_for_child(
-    VectorFieldType& coordinates,
-    const stk::mesh::Entity* node_rels,
-    const std::vector<size_t>& childOrdinals,
-    const std::array<stk::mesh::Entity,ipow(2,dimension)>& parentNodes,
-    const std::vector<std::vector<double>>& isoParCoords) const;
-
   NodeRequests create_child_node_requests(
-    stk::mesh::BulkData& mesh,
     const ElementDescription& elemDescription,
+    stk::mesh::BulkData& mesh,
     const stk::mesh::Selector& selector
   ) const;
 
+  void determine_child_ordinals(
+    const ElementDescription& elemDescription,
+    const stk::mesh::BulkData& mesh,
+    NodeRequests& requests) const;
+
   void batch_create_child_nodes(
+    const ElementDescription& elemDescription,
     stk::mesh::BulkData & mesh,
     NodeRequests& requests,
     const stk::mesh::PartVector& node_parts
   ) const;
 
   void parallel_communicate_ids(
+    const ElementDescription& elemDescription,
     const stk::mesh::BulkData& mesh,
     NodeRequests& requests) const;
 
   void populate_elem_node_relations(
     const ElementDescription& elemDescription,
     stk::mesh::BulkData& mesh,
-    const stk::mesh::Selector selector,
-    const NodeRequests& requests
+    const stk::mesh::Selector& selector,
+    const NodeRequests& requests,
+    ElemRelationsMap& elemNodeMap
   );
+
+  void populate_original_elem_node_relations(
+    const stk::mesh::BulkData& mesh,
+    const stk::mesh::Selector& selector,
+    const NodeRequests& requests,
+    ElemRelationsMap& elemNodeMap
+  );
+
+  void populate_new_elem_node_relations(
+    const NodeRequests& requests,
+    ElemRelationsMap& elemNodeMap
+  );
+
+  void create_elements(
+    stk::mesh::BulkData& mesh,
+    const stk::mesh::PartVector& baseElemParts,
+    ElemRelationsMap& elemNodeMap) const;
+
+  NodesElemMap make_base_nodes_to_elem_map_at_boundary(
+    const ElementDescription& elemDesc,
+    const stk::mesh::BulkData& mesh,
+    const stk::mesh::PartVector& mesh_parts
+  ) const;
+
+  void
+  populate_exposed_face_to_super_elem_map(
+    const ElementDescription& elemDesc,
+    const stk::mesh::BulkData& mesh,
+    const stk::mesh::PartVector& mesh_parts,
+    const stk::mesh::PartVector& superElemParts);
+
 
   size_t count_nodes(
     const stk::mesh::PartVector& baseParts,
     const stk::mesh::PartVector& promotedParts) const;
+
   size_t count_requested_nodes(const NodeRequests& requests) const;
 
   const ElementDescription& elemDescription_;
@@ -223,11 +310,11 @@ private:
   stk::mesh::PartVector baseParts_;
   stk::mesh::PartVector promotedParts_;
 
-  ElemRelationsMap elemNodeMap_;
   ElemRelationsMap nodeElemMap_;
 
   ElemRelationsMap elemNodeMapBC_;
   ElemRelationsMap nodeElemMapBC_;
+  ExposedFaceElemMap exposedFaceToSuperElemMap_;
 };
 
 } // namespace nalu

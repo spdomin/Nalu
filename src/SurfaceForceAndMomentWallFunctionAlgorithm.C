@@ -237,7 +237,7 @@ SurfaceForceAndMomentWallFunctionAlgorithm::execute()
       stk::mesh::Entity face = b[k];
 
       // face node relations
-      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
 
       //======================================
       // gather nodal data off of face
@@ -452,7 +452,7 @@ SurfaceForceAndMomentWallFunctionAlgorithm::pre_work()
       stk::mesh::Entity face = b[k];
 
       // face node relations
-      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
 
       // pointer to face data
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec_, face);

@@ -331,8 +331,8 @@ ContactInfo::complete_search()
       theHaloCoords = theHaloInfo->haloNodalCoords_;
 
       // now load the elemental nodal coords
-      stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(elem);
-      int num_nodes = realm_.num_nodes_all(elem);
+      stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(elem);
+      int num_nodes = bulk_data.num_nodes(elem);
 
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = elem_node_rels[ni];
@@ -402,8 +402,8 @@ ContactInfo::complete_search()
       isoParCoords = infoObject->isoParCoords_;
 
       // now load the elemental nodal coords
-      stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(elem);
-      int num_nodes = realm_.num_nodes_all(elem);
+      stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(elem);
+      int num_nodes = bulk_data.num_nodes(elem);
 
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = elem_node_rels[ni];
@@ -468,8 +468,8 @@ ContactInfo::find_possible_elements()
       }
 
       // extract elem_node_relations
-      stk::mesh::Entity const* elem_node_rels = realm_.begin_nodes_all(elem);
-      const int num_nodes = realm_.num_nodes_all(elem);
+      stk::mesh::Entity const* elem_node_rels = bulk_data.begin_nodes(elem);
+      const int num_nodes = bulk_data.num_nodes(elem);
 
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = elem_node_rels[ni];

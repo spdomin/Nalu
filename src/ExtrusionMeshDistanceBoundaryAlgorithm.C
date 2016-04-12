@@ -131,12 +131,12 @@ ExtrusionMeshDistanceBoundaryAlgorithm::execute()
       double * areaVec = stk::mesh::field_data(*exposedAreaVec, b, k);
 
       // face node relations for nodal gather
-      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(b,k);
+      stk::mesh::Entity const * face_node_rels = b.begin_nodes(k);
 
       //===============================================
       // gather nodal data; this is how we do it now..
       //===============================================
-      int num_nodes = realm_.num_nodes_all(b,k);
+      int num_nodes = b.num_nodes(k);
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = face_node_rels[ni];
         double * coords = stk::mesh::field_data(*coordinates, node);
@@ -217,6 +217,9 @@ ExtrusionMeshDistanceBoundaryAlgorithm::execute()
         ib != face_buckets.end() ; ++ib ) {
     stk::mesh::Bucket & b = **ib ;
 
+    // size some things that are useful
+    const int num_face_nodes = b.topology().num_nodes();
+
     const stk::mesh::Bucket::size_type length   = b.size();
 
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
@@ -228,9 +231,7 @@ ExtrusionMeshDistanceBoundaryAlgorithm::execute()
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec, face);
 
       // face node relations for nodal gather
-      stk::mesh::Entity const* face_node_rels = realm_.begin_nodes_all(face);
-      // size some things that are useful
-      const int num_face_nodes = realm_.num_nodes_all(face);
+      stk::mesh::Entity const* face_node_rels = realm_.begin_side_nodes_all(face);
 
       // one to one mapping between ips and nodes
       for ( int ip = 0; ip < num_face_nodes; ++ip ) {

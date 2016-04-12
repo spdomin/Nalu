@@ -176,7 +176,7 @@ AssembleMomentumWallFunctionSolverAlgorithm::execute()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
       for ( int ni = 0; ni < nodesPerFace; ++ni ) {
         stk::mesh::Entity node = face_node_rels[ni];
         connected_nodes[ni] = node;

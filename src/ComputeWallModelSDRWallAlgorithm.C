@@ -97,9 +97,10 @@ ComputeWallModelSDRWallAlgorithm::execute()
 
     // extract master element
     MasterElement *meSCS = realm_.get_surface_master_element(theElemTopo);
+    MasterElement *meFC = realm_.get_surface_master_element(b.topology());
 
     // face master element
-    const int nodesPerFace = meSCS->nodesPerElement_;
+    const int nodesPerFace = meFC->nodesPerElement_;
     std::vector<int> face_node_ordinal_vec(nodesPerFace);
 
     const stk::mesh::Bucket::size_type length   = b.size();
@@ -112,7 +113,7 @@ ComputeWallModelSDRWallAlgorithm::execute()
       //======================================
       // gather nodal data off of face; n/a
       //======================================
-      int num_face_nodes = realm_.num_nodes_all(face);
+      int num_face_nodes = realm_.num_side_nodes_all(face);
       // sanity check on num nodes
       ThrowAssert( num_face_nodes == nodesPerFace );
 
@@ -121,16 +122,16 @@ ComputeWallModelSDRWallAlgorithm::execute()
       double *wallFrictionVelocityBip = stk::mesh::field_data(*wallFrictionVelocityBip_, face);
 
       // extract the connected element to this exposed face; should be single in size!
-      const stk::mesh::Entity* face_elem_rels = bulk_data.begin_elements(face);
+      const stk::mesh::Entity* face_elem_rels = realm_.face_elem_map(face);
       ThrowAssert( bulk_data.num_elements(face) == 1 );
 
       // get element; its face ordinal number and populate face_node_ordinal_vec
       stk::mesh::Entity element = face_elem_rels[0];
       const int face_ordinal = bulk_data.begin_element_ordinals(face)[0];
-              realm_.side_node_ordinals_all(theElemTopo, face_ordinal, face_node_ordinal_vec);
+      realm_.side_node_ordinals_all(theElemTopo,face_ordinal,face_node_ordinal_vec);
 
       // get the relations off of element
-      stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(element);
+      stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(element);
 
       // loop over face nodes
       for ( int ip = 0; ip < num_face_nodes; ++ip ) {

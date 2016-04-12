@@ -32,6 +32,7 @@
 
 // stk_util
 #include <stk_util/parallel/ParallelReduce.hpp>
+#include <stk_util/environment/CPUTime.hpp>
 
 namespace sierra{
 namespace nalu{
@@ -288,8 +289,8 @@ OversetManager::define_overset_bounding_box()
       stk::mesh::Entity element = b[k];
 
       // extract elem_node_relations
-      stk::mesh::Entity const* elem_node_rels = realm_.begin_nodes_all(element);
-      const int num_nodes = realm_.num_nodes_all(element);
+      stk::mesh::Entity const* elem_node_rels = bulkData_->begin_nodes(element);
+      const int num_nodes = bulkData_->num_nodes(element);
 
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = elem_node_rels[ni];
@@ -407,8 +408,8 @@ OversetManager::define_overset_bounding_boxes()
       }
         
       // extract elem_node_relations
-      stk::mesh::Entity const* elem_node_rels = realm_.begin_nodes_all(element);
-      const int num_nodes = realm_.num_nodes_all(element);
+      stk::mesh::Entity const* elem_node_rels = bulkData_->begin_nodes(element);
+      const int num_nodes = bulkData_->num_nodes(element);
         
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = elem_node_rels[ni];
@@ -473,8 +474,8 @@ OversetManager::define_background_bounding_boxes()
       }
         
       // extract elem_node_relations
-      stk::mesh::Entity const* elem_node_rels = realm_.begin_nodes_all(element);
-      const int num_nodes = realm_.num_nodes_all(element);
+      stk::mesh::Entity const* elem_node_rels = bulkData_->begin_nodes(element);
+      const int num_nodes = bulkData_->num_nodes(element);
         
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = elem_node_rels[ni];
@@ -560,6 +561,10 @@ OversetManager::populate_inactive_part()
 void
 OversetManager::skin_exposed_surface_on_inactive_part()
 {
+  double start_time = stk::cpu_time();
+
+  NaluEnv::self().naluOutputP0() << "OversetManager::skin_exposed_surface_on_inactive_part(): Begin" << std::endl;
+
   // skin the inactive part to obtain all exposed surface
   stk::mesh::Selector s_inactive = stk::mesh::Selector(*inActivePart_);
   stk::mesh::PartVector partToSkinVec;
@@ -567,6 +572,13 @@ OversetManager::skin_exposed_surface_on_inactive_part()
   partToSkinVec.push_back(inActivePart_); // e.g. block_3
   partToPopulateVec.push_back(backgroundSurfacePart_); // e.g. surface_101
   stk::mesh::skin_mesh(*bulkData_, s_inactive, partToPopulateVec, &s_inactive);
+
+  const double end_time = stk::cpu_time();
+
+  // set mesh reading
+  realm_.timerSkinMesh_ = (end_time - start_time);
+
+  NaluEnv::self().naluOutputP0() << "OversetManager::skin_exposed_surface_on_inactive_part(): End" << std::endl;  
 }
   
 //--------------------------------------------------------------------------
@@ -945,5 +957,5 @@ OversetManager::complete_search(
   }  
 }
 
-} // namespace nalu
+} // namespace naluUnit
 } // namespace Sierra

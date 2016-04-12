@@ -16,6 +16,14 @@
 namespace sierra{
 namespace nalu{
 
+//==========================================================================
+// Class Definition
+//==========================================================================
+// LagrangeBasis - Provides the set of weights for interpolating and taking
+// derivatives for a higher-order, tensor-product element
+// TODO(rcknaus): implement a more optimized method for interpolating data
+// at a non-integration point location
+//===========================================================================
 LagrangeBasis::LagrangeBasis(
   std::vector<std::vector<unsigned>>&  indicesMap,
   const std::vector<double>& nodeLocs)

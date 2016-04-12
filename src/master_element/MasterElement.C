@@ -5558,7 +5558,7 @@ Quad92DSCS::set_boundary_info()
 
   faceOrdinal = 3; //left face
   oppFaceIndex = 0;
-  //NOTE: this face is reversed
+  //NOTE: this faces is reversed
   for (int k = nodes1D_-1; k >= 0; --k) {
     const int nearNode = face_node_number(nodes1D_-k-1,faceOrdinal);
     int oppNode = tensor_product_node_map(1,k);

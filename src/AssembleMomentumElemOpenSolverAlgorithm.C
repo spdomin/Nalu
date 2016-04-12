@@ -226,8 +226,8 @@ AssembleMomentumElemOpenSolverAlgorithm::execute()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
-      int num_face_nodes = realm_.num_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
+      int num_face_nodes = realm_.num_side_nodes_all(face);
       // sanity check on num nodes
       ThrowAssert( num_face_nodes == nodesPerFace );
       for ( int ni = 0; ni < num_face_nodes; ++ni ) {
@@ -255,15 +255,14 @@ AssembleMomentumElemOpenSolverAlgorithm::execute()
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec_, face);
 
       // extract the connected element to this exposed face; should be single in size!
-      stk::mesh::Entity const * face_elem_rels = bulk_data.begin_elements(face);
+      stk::mesh::Entity const * face_elem_rels = realm_.face_elem_map(face);
       ThrowAssert( bulk_data.num_elements(face) == 1 );
 
       // get element; its face ordinal number and populate face_node_ordinal_vec
       stk::mesh::Entity element = face_elem_rels[0];
-      const stk::mesh::ConnectivityOrdinal* face_elem_ords = bulk_data.begin_element_ordinals(face);
-      const int face_ordinal = face_elem_ords[0];
-      realm_.side_node_ordinals_all(theElemTopo, face_ordinal, face_node_ordinal_vec);
+      const int face_ordinal = bulk_data.begin_element_ordinals(face)[0];
 
+      realm_.side_node_ordinals_all(theElemTopo,face_ordinal,face_node_ordinal_vec);
 
       // mapping from ip to nodes for this ordinal; 
       const int *ipNodeMap = meSCS->ipNodeMap(face_ordinal); // use with elem_node_rels
@@ -272,8 +271,8 @@ AssembleMomentumElemOpenSolverAlgorithm::execute()
       //==========================================
       // gather nodal data off of element
       //==========================================
-      stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(element);
-      int num_nodes = realm_.num_nodes_all(element);
+      stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(element);
+      int num_nodes = bulk_data.num_nodes(element);
       // sanity check on num nodes
       ThrowAssert( num_nodes == nodesPerElement );
       for ( int ni = 0; ni < num_nodes; ++ni ) {

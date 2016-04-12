@@ -110,8 +110,8 @@ ContinuityMassBDF2ElemSuppAlg::elem_execute(
   const int numScvIp = meSCV->numIntPoints_;
 
   // gather
-  stk::mesh::Entity const *  node_rels = realm_.begin_nodes_all(element);
-  int num_nodes = realm_.num_nodes_all(element);
+  stk::mesh::Entity const *  node_rels = bulkData_->begin_nodes(element);
+  int num_nodes = bulkData_->num_nodes(element);
 
   // sanity check on num nodes
   ThrowAssert( num_nodes == nodesPerElement );

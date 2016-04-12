@@ -99,10 +99,14 @@ AssembleScalarElemDiffSolverAlgorithm::execute()
     diffusionOperator = new CollocationScalarElemDiffusionFunctor(realm_,bulk_data, meta_data,
       scalarQNp1, *diffFluxCoeff_, *coordinates_, nDim);
   }
-  else{
-    diffusionOperator = new CVFEMScalarElemDiffusionFunctor(realm_, bulk_data, meta_data,
+  else if (realm_.using_SGL_quadrature()){
+    diffusionOperator = new CVFEMScalarElemDiffusionFunctorSGL(realm_, bulk_data, meta_data,
       scalarQNp1, *diffFluxCoeff_, *coordinates_, nDim);
    }
+  else {
+    diffusionOperator = new CVFEMScalarElemDiffusionFunctor(realm_, bulk_data, meta_data,
+      scalarQNp1, *diffFluxCoeff_, *coordinates_, nDim);
+  }
 
   // define some common selectors
   stk::mesh::Selector s_locally_owned_union = meta_data.locally_owned_part()

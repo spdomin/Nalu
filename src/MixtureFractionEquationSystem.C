@@ -44,12 +44,11 @@
 #include <ScalarMassBDF2NodeSuppAlg.h>
 #include <ScalarMassBDF2ElemSuppAlg.h>
 #include <ScalarNSOElemSuppAlg.h>
+#include <ScalarKeNSOElemSuppAlg.h>
 #include <Simulation.h>
 #include <SolutionOptions.h>
 #include <TimeIntegrator.h>
 #include <SolverAlgorithmDriver.h>
-
-#include <element_promotion/PromoteElement.h>
 
 // user function
 #include <user_functions/VariableDensityMixFracSrcElemSuppAlg.h>
@@ -281,6 +280,14 @@ MixtureFractionEquationSystem::register_interior_algorithm(
         else if (sourceName == "NSO_4TH_ALT" ) {
           suppAlg = new ScalarNSOElemSuppAlg(realm_, mixFrac_, dzdx_, evisc_, 1.0, 1.0);
         }
+        else if (sourceName == "NSO_KE_2ND" ) {
+          const double turbSc = realm_.get_turb_schmidt(mixFrac_->name());
+          suppAlg = new ScalarKeNSOElemSuppAlg(realm_, mixFrac_, dzdx_, turbSc, 0.0);
+        }
+        else if (sourceName == "NSO_KE_4TH" ) {
+          const double turbSc = realm_.get_turb_schmidt(mixFrac_->name());
+          suppAlg = new ScalarKeNSOElemSuppAlg(realm_, mixFrac_, dzdx_, turbSc, 1.0);
+        }
         else if (sourceName == "mixture_fraction_time_derivative" ) {
           useCMM = true;
           if ( realm_.number_of_states() == 2 ) {
@@ -360,17 +367,11 @@ MixtureFractionEquationSystem::register_interior_algorithm(
     EffectiveDiffFluxCoeffAlgorithm *theAlg
       = new EffectiveDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, lamSc, turbSc);
     diffFluxCoeffAlgDriver_->algMap_[algType] = theAlg;
-    if (realm_.doPromotion_) {
-      itev = diffFluxCoeffAlgDriver_->algMap_.find(algType);
-      itev->second->partVec_.push_back(promoted_part(*part));
-    }
   }
   else {
     itev->second->partVec_.push_back(part);
-    if (realm_.doPromotion_) {
-      itev->second->partVec_.push_back(promoted_part(*part));
-    }
   }
+
 }
 
 //--------------------------------------------------------------------------
@@ -487,10 +488,6 @@ MixtureFractionEquationSystem::register_open_bc(
   // register boundary data; mixFrac_bc
   ScalarFieldType *theBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "open_mixFrac_bc"));
   stk::mesh::put_field(*theBcField, *part);
-//  if(realm_.doPromotion_) {
-//    auto promotedPart = meta_data.get_part("block_1_promoted");
-//    stk::mesh::put_field(*theBcField,*promotedPart);
-//  }
 
   // extract the value for user specified mixFrac and save off the AuxFunction
   OpenUserData userData = openBCData.userData_;

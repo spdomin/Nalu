@@ -221,8 +221,8 @@ NonConformalInfo::construct_dgInfo_state()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
-      const int num_face_nodes = realm_.num_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
+      const int num_face_nodes = realm_.num_side_nodes_all(face);
       
       // sanity check on num nodes (low order, P=1, check)
       ThrowAssert( num_face_nodes == numScsBip ); ThrowAssert( num_face_nodes == nodesPerFace );
@@ -235,7 +235,7 @@ NonConformalInfo::construct_dgInfo_state()
       }
 
       // extract the connected element to this exposed face; should be single in size!
-      const stk::mesh::Entity* face_elem_rels = bulk_data.begin_elements(face);
+      const stk::mesh::Entity* face_elem_rels = realm_.face_elem_map(face);
       ThrowAssert( bulk_data.num_elements(face) == 1 );
 
       // get element; its face ordinal number
@@ -325,7 +325,7 @@ NonConformalInfo::determine_elems_to_ghost()
         throw std::runtime_error("no valid entry for face");
       
       // extract the connected element
-      const stk::mesh::Entity* face_elem_rels = bulk_data.begin_elements(face);
+      const stk::mesh::Entity* face_elem_rels = realm_.face_elem_map(face);
       ThrowAssert( bulk_data.num_elements(face) == 1 );
       stk::mesh::Entity element = face_elem_rels[0];
           
@@ -508,8 +508,8 @@ NonConformalInfo::find_possible_face_elements()
       }
 
       // extract elem_node_relations
-      stk::mesh::Entity const* face_node_rels = realm_.begin_nodes_all(face);
-      const int num_nodes = realm_.num_nodes_all(face);
+      stk::mesh::Entity const* face_node_rels = realm_.begin_side_nodes_all(face);
+      const int num_nodes = realm_.num_side_nodes_all(face);
 
       for ( int ni = 0; ni < num_nodes; ++ni ) {
         stk::mesh::Entity node = face_node_rels[ni];

@@ -1,5 +1,5 @@
 /*------------------------------------------------------------------------*/
-/*  Copyright 2014 Sandia Corporatlion.                                    */
+/*  Copyright 2014 Sandia Corporatlion.                                   */
 /*  This software is released under the license detailed                  */
 /*  in the file, LICENSE, which is located in the top-level Nalu          */
 /*  directory structure                                                   */
@@ -23,9 +23,6 @@ HigherOrderHexSCV::HigherOrderHexSCV(const ElementDescription& elem)
   : MasterElement(),
     elem_(elem)
 {
-  // TODO(rcknaus): need to pick a modal basis (Hex8 or Hex27, really)
-  // and use it only for geometric calculations (i.e. volume & area)
-  // otherwise, computing the mass matrix scales far too viciously with p, O(p^9)
   nDim_ = elem_.dimension;
   nodesPerElement_ = elem_.nodesPerElement;
 
@@ -554,7 +551,6 @@ HigherOrderHexSCS::set_boundary_info()
       }
     }
   }
-  //throw std::runtime_error("check");
 }
 //--------------------------------------------------------------------------
 void
@@ -1153,12 +1149,12 @@ HigherOrderQuad2DSCS::set_interior_info()
       if (m % 2 == 0) {
         leftNode  = elem_.tensor_product_node_map(l,m);
         rightNode = elem_.tensor_product_node_map(l,m + 1);
-        orientation = -1.0;
+        orientation = -1;
       }
       else {
         leftNode  = elem_.tensor_product_node_map(l,m + 1);
         rightNode = elem_.tensor_product_node_map(l,m);
-        orientation = +1.0;
+        orientation = +1;
       }
 
       for (unsigned j = 0; j < elem_.numQuad; ++j) {
@@ -1192,12 +1188,12 @@ HigherOrderQuad2DSCS::set_interior_info()
       if (m % 2 == 0) {
         leftNode  = elem_.tensor_product_node_map(m,l);
         rightNode = elem_.tensor_product_node_map(m+1,l);
-        orientation = +1.0;
+        orientation = +1;
       }
       else {
         leftNode  = elem_.tensor_product_node_map(m+1,l);
         rightNode = elem_.tensor_product_node_map(m,l);
-        orientation = -1.0;
+        orientation = -1;
       }
 
       for (unsigned j = 0; j < elem_.numQuad; ++j) {
@@ -1592,7 +1588,7 @@ HigherOrderEdge2DSCS::HigherOrderEdge2DSCS(const ElementDescription& elem)
     for (unsigned i = 0; i < elem_.numQuad; ++i) {
       intgLoc_[scalar_index]  = elem_.gauss_point_location(k,i);
       ipWeight_[scalar_index] = elem_.tensor_product_weight(k,i);
-      ipNodeMap_[scalar_index] = elem_.tensor_product_node_map(k);
+      ipNodeMap_[scalar_index] = elem_.tensor_product_node_map_bc(k);
       ++scalar_index;
     }
   }

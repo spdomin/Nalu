@@ -113,10 +113,10 @@ ComputeMdotEdgeAlgorithm::execute()
 
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
 
-      stk::mesh::Entity const * edge_node_rels = realm_.begin_nodes_all(b,k);
+      stk::mesh::Entity const * edge_node_rels = b.begin_nodes(k);
 
       // sanity check on number or nodes
-      ThrowAssert( realm_.num_nodes_all(b,k) == 2 );
+      ThrowAssert( b.num_nodes(k) == 2 );
 
       // pointer to edge area vector
       for ( int j = 0; j < nDim; ++j )

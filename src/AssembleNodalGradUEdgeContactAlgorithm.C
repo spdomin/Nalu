@@ -66,6 +66,8 @@ AssembleNodalGradUEdgeContactAlgorithm::execute()
 {
 
   stk::mesh::MetaData & meta_data = realm_.meta_data();
+  stk::mesh::BulkData & bulk_data = realm_.bulk_data();
+
   const int nDim = meta_data.spatial_dimension();
 
   // space for interpolated right state (halo)
@@ -101,8 +103,8 @@ AssembleNodalGradUEdgeContactAlgorithm::execute()
       // extract halo info stuff; can remove edge area vec...
       const double *p_areaVec = &infoObject->haloEdgeAreaVec_[0];
 
-      stk::mesh::Entity const* elem_node_rels = realm_.begin_nodes_all(elem);
-      const int num_nodes = realm_.num_nodes_all(elem);
+      stk::mesh::Entity const* elem_node_rels = bulk_data.begin_nodes(elem);
+      const int num_nodes = bulk_data.num_nodes(elem);
 
       // now load the elemental values for future interpolation
       for ( int ni = 0; ni < num_nodes; ++ni ) {

@@ -111,13 +111,11 @@ ComputeLowReynoldsSDRWallAlgorithm::execute()
 
     // face master element
     MasterElement *meFC = realm_.get_surface_master_element(b.topology());
+    const int nodesPerFace = meFC->nodesPerElement_;
     const int numScsBip = meFC->numIntPoints_;
 
     // mapping from ip to nodes for this ordinal
     const int *faceIpNodeMap = meFC->ipNodeMap();
-
-    const int nodesPerFace = meFC->nodesPerElement_;
-
 
     // algorithm related; element
     ws_density.resize(nodesPerFace);
@@ -145,8 +143,8 @@ ComputeLowReynoldsSDRWallAlgorithm::execute()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = realm_.begin_nodes_all(face);
-      int num_face_nodes = realm_.num_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
+      int num_face_nodes = realm_.num_side_nodes_all(face);
       // sanity check on num nodes
       ThrowAssert( num_face_nodes == nodesPerFace );
       for ( int ni = 0; ni < num_face_nodes; ++ni ) {
@@ -161,7 +159,7 @@ ComputeLowReynoldsSDRWallAlgorithm::execute()
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec_, face);
 
       // extract the connected element to this exposed face; should be single in size!
-      const stk::mesh::Entity* face_elem_rels = bulk_data.begin_elements(face);
+      const stk::mesh::Entity* face_elem_rels = realm_.face_elem_map(face);
       ThrowAssert( bulk_data.num_elements(face) == 1 );
 
       // get element; its face ordinal number
@@ -169,7 +167,7 @@ ComputeLowReynoldsSDRWallAlgorithm::execute()
       const int face_ordinal = bulk_data.begin_element_ordinals(face)[0];
 
       // get the relations off of element
-      stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(element);
+      stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(element);
 
       // loop over face nodes
       for ( int ip = 0; ip < numScsBip; ++ip ) {

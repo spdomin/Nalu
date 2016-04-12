@@ -125,7 +125,6 @@ private:
 
   typedef std::pair<stk::mesh::Entity, stk::mesh::Entity> Connection;
   typedef std::set< Connection > ConnectionSet;
-  typedef std::vector< Connection > ConnectionVec;
   ConnectionSet connectionSet_;
   std::vector<GlobalOrdinal> totalGids_;
 

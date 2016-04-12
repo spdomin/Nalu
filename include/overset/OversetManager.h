@@ -1,7 +1,7 @@
 /*------------------------------------------------------------------------*/
 /*  Copyright 2014 Sandia Corporation.                                    */
 /*  This software is released under the license detailed                  */
-/*  in the file, LICENSE, which is located in the top-level nalu      */
+/*  in the file, LICENSE, which is located in the top-level NaluUnit      */
 /*  directory structure                                                   */
 /*------------------------------------------------------------------------*/
 
@@ -180,7 +180,7 @@ public:
 
 };
 
-} // namespace nalu
+} // namespace naluUnit
 } // namespace Sierra
 
 #endif

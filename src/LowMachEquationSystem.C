@@ -80,6 +80,7 @@
 #include <MomentumMassBackwardEulerElemSuppAlg.h>
 #include <MomentumMassBDF2NodeSuppAlg.h>
 #include <MomentumMassBDF2ElemSuppAlg.h>
+#include <MomentumKeNSOElemSuppAlg.h>
 #include <MomentumNSOElemSuppAlg.h>
 #include <MomentumAdvDiffElemSuppAlg.h>
 #include <NaluEnv.h>
@@ -102,8 +103,6 @@
 #include <TurbViscSmagorinskyAlgorithm.h>
 #include <TurbViscSSTAlgorithm.h>
 #include <TurbViscWaleAlgorithm.h>
-
-#include <element_promotion/PromoteElement.h>
 
 // user function
 #include <user_functions/ConvectingTaylorVortexVelocityAuxFunction.h>
@@ -404,11 +403,11 @@ LowMachEquationSystem::register_open_bc(
 
   // mdot at open bc; register field
   MasterElement *meFC = realm_.get_surface_master_element(theTopo);
-  const int numScsIp = meFC->numIntPoints_;
+  const int numScsBip = meFC->numIntPoints_;
   GenericFieldType *mdotBip 
     = &(metaData.declare_field<GenericFieldType>(static_cast<stk::topology::rank_t>(metaData.side_rank()), 
                                                  "open_mass_flow_rate"));
-  stk::mesh::put_field(*mdotBip, *part, numScsIp);
+  stk::mesh::put_field(*mdotBip, *part, numScsBip);
 }
 
 //--------------------------------------------------------------------------
@@ -1030,6 +1029,12 @@ MomentumEquationSystem::register_interior_algorithm(
         else if (sourceName == "NSO_4TH_ALT" ) {
           suppAlg = new MomentumNSOElemSuppAlg(realm_, velocity_, dudx_, realm_.is_turbulent() ? evisc_ : visc_, 1.0, 1.0);
         }
+        else if (sourceName == "NSO_KE_2ND" ) {
+          suppAlg = new MomentumKeNSOElemSuppAlg(realm_, velocity_, dudx_, 0.0);
+        }
+        else if (sourceName == "NSO_KE_4TH" ) {
+          suppAlg = new MomentumKeNSOElemSuppAlg(realm_, velocity_, dudx_, 1.0);
+        }
         else if (sourceName == "buoyancy" ) {
           suppAlg = new MomentumBuoyancySrcElemSuppAlg(realm_);
         }
@@ -1126,16 +1131,9 @@ MomentumEquationSystem::register_interior_algorithm(
       EffectiveDiffFluxCoeffAlgorithm *theAlg
         = new EffectiveDiffFluxCoeffAlgorithm(realm_, part, visc_, tvisc_, evisc_, 1.0, 1.0);
       diffFluxCoeffAlgDriver_->algMap_[algType] = theAlg;
-      if (realm_.doPromotion_) {
-        itev = diffFluxCoeffAlgDriver_->algMap_.find(algType);
-        itev->second->partVec_.push_back(promoted_part(*part));
-      }
     }
     else {
       itev->second->partVec_.push_back(part);
-      if (realm_.doPromotion_) {
-        itev->second->partVec_.push_back(promoted_part(*part));
-      }
     }
 
     // deal with tvisc better? - possibly should be on EqSysManager?
@@ -1160,16 +1158,9 @@ MomentumEquationSystem::register_interior_algorithm(
           throw std::runtime_error("non-supported turb model");
       }
       tviscAlgDriver_->algMap_[algType] = theAlg;
-      if (realm_.doPromotion_) {
-        it_tv = tviscAlgDriver_->algMap_.find(algType);
-        it_tv->second->partVec_.push_back(promoted_part(*part));
-      }
     }
     else {
       it_tv->second->partVec_.push_back(part);
-      if (realm_.doPromotion_) {
-        it_tv->second->partVec_.push_back(promoted_part(*part));
-      }
     }
   }
 
@@ -1482,15 +1473,18 @@ MomentumEquationSystem::register_wall_bc(
     ScalarFieldType *assembledWallNormalDistance=  &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "assembled_wall_normal_distance"));
     stk::mesh::put_field(*assembledWallNormalDistance, *part);
 
-    // integration point; size it based on number of nodes (= number of bips)
-    const int numIp = theTopo.num_nodes();
+    // integration point; size it based on number of boundary integration points
+    MasterElement *meFC = realm_.get_surface_master_element(theTopo);
+    const int numScsBip = meFC->numIntPoints_;
 
     stk::topology::rank_t sideRank = static_cast<stk::topology::rank_t>(meta_data.side_rank());
-    GenericFieldType *wallFrictionVelocityBip=  &(meta_data.declare_field<GenericFieldType>(sideRank, "wall_friction_velocity_bip"));
-    stk::mesh::put_field(*wallFrictionVelocityBip, *part, numIp);
+    GenericFieldType *wallFrictionVelocityBip 
+      =  &(meta_data.declare_field<GenericFieldType>(sideRank, "wall_friction_velocity_bip"));
+    stk::mesh::put_field(*wallFrictionVelocityBip, *part, numScsBip);
 
-    GenericFieldType *wallNormalDistanceBip =  &(meta_data.declare_field<GenericFieldType>(sideRank, "wall_normal_distance_bip"));
-    stk::mesh::put_field(*wallNormalDistanceBip, *part, numIp);
+    GenericFieldType *wallNormalDistanceBip 
+      =  &(meta_data.declare_field<GenericFieldType>(sideRank, "wall_normal_distance_bip"));
+    stk::mesh::put_field(*wallNormalDistanceBip, *part, numScsBip);
 
     // create wallFunctionParamsAlgDriver
     if ( NULL == wallFunctionParamsAlgDriver_)
@@ -1668,12 +1662,12 @@ MomentumEquationSystem::register_non_conformal_bc(
 
   // mdot at nc bc; register field; require topo and num ips
   MasterElement *meFC = realm_.get_surface_master_element(theTopo);
-  const int numIp = meFC->numIntPoints_;
+  const int numScsBip = meFC->numIntPoints_;
 
   stk::topology::rank_t sideRank = static_cast<stk::topology::rank_t>(meta_data.side_rank());
   GenericFieldType *mdotBip =
     &(meta_data.declare_field<GenericFieldType>(sideRank, "nc_mass_flow_rate"));
-  stk::mesh::put_field(*mdotBip, *part, numIp );
+  stk::mesh::put_field(*mdotBip, *part, numScsBip );
 
   // non-solver; contribution to Gjui; DG algorithm decides on locations for integration points
   if ( edgeNodalGradient_ ) {
@@ -2296,6 +2290,7 @@ ContinuityEquationSystem::register_open_bc(
   ScalarFieldType *pressureBC
     = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "pressure_bc"));
   stk::mesh::put_field(*pressureBC, *part );
+
   VectorFieldType &dpdxNone = dpdx_->field_of_state(stk::mesh::StateNone);
 
   // non-solver; contribution to Gjp; allow for element-based shifted
@@ -2510,12 +2505,12 @@ ContinuityEquationSystem::register_non_conformal_bc(
 
   // mdot at nc bc; register field; require topo and num ips
   MasterElement *meFC = realm_.get_surface_master_element(theTopo);
-  const int numIp = meFC->numIntPoints_;
+  const int numScsBip = meFC->numIntPoints_;
   
   stk::topology::rank_t sideRank = static_cast<stk::topology::rank_t>(meta_data.side_rank());
   GenericFieldType *mdotBip =
     &(meta_data.declare_field<GenericFieldType>(sideRank, "nc_mass_flow_rate"));
-  stk::mesh::put_field(*mdotBip, *part, numIp );
+  stk::mesh::put_field(*mdotBip, *part, numScsBip );
 
   // non-solver; contribution to Gjp; DG algorithm decides on locations for integration points
   if ( edgeNodalGradient_ ) {    

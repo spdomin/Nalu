@@ -11,6 +11,8 @@
 #include <FieldTypeDef.h>
 #include <Realm.h>
 #include <master_element/MasterElement.h>
+#include <element_promotion/QuadratureKernels.h>
+#include <nalu_make_unique.h>
 
 // stk_mesh/base/fem
 #include <stk_mesh/base/Entity.hpp>
@@ -39,7 +41,7 @@ SteadyThermalContact3DSrcElemSuppAlg::SteadyThermalContact3DSrcElemSuppAlg(
     pi_(std::acos(-1.0)),
     useShifted_(false),
     nDim_(realm_.spatialDimension_),
-    evalAtIps_(true)
+    useSGL_(false)
 {
   // save off fields
   stk::mesh::MetaData & meta_data = realm_.meta_data();
@@ -47,6 +49,11 @@ SteadyThermalContact3DSrcElemSuppAlg::SteadyThermalContact3DSrcElemSuppAlg(
  
   // scratch vecs
   scvCoords_.resize(nDim_);
+
+  if (realm_.using_SGL_quadrature()) {
+    quadOp_ = make_unique<SGLQuadratureOps>(*realm_.elem_);
+    useSGL_ = true;
+  }
 }
 
 //--------------------------------------------------------------------------
@@ -63,6 +70,8 @@ SteadyThermalContact3DSrcElemSuppAlg::elem_resize(
   ws_coordinates_.resize(nDim_*nodesPerElement);
   ws_scv_volume_.resize(numScvIp);
   ws_nodalSrc_.resize(nodesPerElement);
+  ws_source_integrand_.resize(numScvIp);
+  ws_source_integrated_.resize(numScvIp);
 
   // compute shape function
   if ( useShifted_ )
@@ -97,8 +106,8 @@ SteadyThermalContact3DSrcElemSuppAlg::elem_execute(
   const int numScvIp = meSCV->numIntPoints_;
 
   // gather
-  stk::mesh::Entity const *  node_rels = realm_.begin_nodes_all(element);
-  int num_nodes = realm_.num_nodes_all(element);
+  stk::mesh::Entity const *  node_rels = bulkData_->begin_nodes(element);
+  int num_nodes = bulkData_->num_nodes(element);
 
   // sanity check on num nodes
   ThrowAssert( num_nodes == nodesPerElement );
@@ -119,7 +128,7 @@ SteadyThermalContact3DSrcElemSuppAlg::elem_execute(
   meSCV->determinant(1, &ws_coordinates_[0], &ws_scv_volume_[0], &scv_error);
 
   // choose a form...
-  if ( evalAtIps_ ) {
+  if ( !useSGL_ ) {
     // interpolate to ips and evaluate source
     for ( int ip = 0; ip < numScvIp; ++ip ) {
       
@@ -145,28 +154,20 @@ SteadyThermalContact3DSrcElemSuppAlg::elem_execute(
   }
   else {
     // evaluate source at nodal location
-    for ( int ni = 0; ni < nodesPerElement; ++ni ) {
-      const double x = ws_coordinates_[ni*nDim_+0];
-      const double y = ws_coordinates_[ni*nDim_+1];
-      const double z = ws_coordinates_[ni*nDim_+2];
-      ws_nodalSrc_[ni] = k_/4.0*(2.0*a_*pi_)*(2.0*a_*pi_)*(cos(2.0*a_*pi_*x) + cos(2.0*a_*pi_*y) + cos(2.0*a_*pi_*z));
+    for ( int ip = 0; ip < nodesPerElement; ++ip ) {
+      const int nearestNode = ipNodeMap[ip];
+      const double x = ws_coordinates_[nearestNode*nDim_+0];
+      const double y = ws_coordinates_[nearestNode*nDim_+1];
+      const double z = ws_coordinates_[nearestNode*nDim_+2];
+      ws_nodalSrc_[nearestNode] =  k_/4.0*
+          (2.0*a_*pi_)*(2.0*a_*pi_)*(cos(2.0*a_*pi_*x) + cos(2.0*a_*pi_*y) + cos(2.0*a_*pi_*z))*ws_scv_volume_[ip];
     }
+    quadOp_->volume_3D(ws_nodalSrc_.data(), ws_source_integrated_.data());
 
     // interpolate nodal source term to ips and assemble to nodes
-    for ( int ip = 0; ip < numScvIp; ++ip ) {
-      
-      // nearest node to ip
-      const int nearestNode = ipNodeMap[ip];
-      
-      double ipSource = 0.0;
-
-      const int offSet = ip*nodesPerElement;
-      for ( int ic = 0; ic < nodesPerElement; ++ic ) {
-        const double r = ws_shape_function_[offSet+ic];
-        ipSource += r*ws_nodalSrc_[ic];
-      }
-      rhs[nearestNode] += ipSource*ws_scv_volume_[ip];
-    } 
+    for ( int ni= 0; ni < nodesPerElement; ++ni ) {
+      rhs[ni] += ws_source_integrated_[ni];
+    }
   }
 }
 

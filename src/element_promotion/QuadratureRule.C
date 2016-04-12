@@ -14,6 +14,8 @@
 
 #include <cmath>
 #include <vector>
+#include <tuple>
+#include <iostream>
 
 namespace sierra{
 namespace nalu{
@@ -30,7 +32,7 @@ jacobi_recursion_coefficients(
 
   double nu = (beta - alpha) / (alpha + beta + 2.0);
   double mu = std::pow(2.0, alpha + beta + 1.0) * std::tgamma(alpha + 1.0)
-  * std::tgamma(beta + 1.0) / std::tgamma(alpha + beta + 2.0);
+              * std::tgamma(beta + 1.0) / std::tgamma(alpha + beta + 2.0);
   double nab;
   double sqdif = beta * beta - alpha * alpha;
 
@@ -60,6 +62,15 @@ jacobi_recursion_coefficients(
 std::pair<std::vector<double>, std::vector<double>>
 gauss_legendre_rule(int order)
 {
+  /*
+   * Returns a pair of abscissae and weights for the usual Gauss-Legendre
+   * quadrature rule.
+   *
+   * Based on the Golub-Welsch algorithm.  Implementation is based on the
+   * implementation in Trilinos's rol package, which in turn is based on
+   * polylib's implementation
+   */
+
   int INFO;
   const int N = order;
   const char COMPZ = 'I';
@@ -162,6 +173,15 @@ gauss_lobatto_legendre_rule(
   double xleft,
   double xright)
 {
+  /*
+   * Returns a pair of abscissae and weights for the usual Gauss-Legendre
+   * quadrature rule.
+   *
+   * Based on the modified Golub-Welsch algorithm.  Implementation is based on the
+   * implementation in Trilinos's rol package, which in turn is based on
+   * polylib's implementation
+   */
+
   int INFO;
   const int N = order;
   const char COMPZ = 'I';
@@ -195,6 +215,94 @@ gauss_lobatto_legendre_rule(
   x[N - 1] = xright;
 
   return std::make_pair(x, w);
+}
+//--------------------------------------------------------------------
+Teuchos::SerialDenseVector<int, double>
+subinterval_weights_for_fixed_abscissae(
+  std::vector<double> fixedAbscissae,
+  double xleft,
+  double xright)
+{
+  /*
+   * The goal of this function is to produce quadrature weights
+   * for integration of a polynomial over a subinterval,
+   * (xleft, xright) \subset (-1,1)
+   * given fixed abscissae positioned anywhere in (-1,1)
+   *
+   * The motivation is that, in CVFEM, we have to integrate
+   * over many subintervals quickly.  By making the abscissae
+   * of the quadrature rule independent of the subinterval itself,
+   * we can potentially speed-up assembly while maintaining
+   * exact integration.
+   *
+   * The actual algorithm is a moment-matching algorithm
+   * (e.g. Hildebrand, Introduction to Numerical Analysis, 1974)
+   * with integration of the monomials over the subinterval specified
+   * by the xleft, xright parameters
+   */
+
+  const int nrows = fixedAbscissae.size();
+  Teuchos::SerialDenseMatrix<int, double> weightLHS(nrows, nrows);
+  for (int j = 0; j < nrows; ++j) {
+    for (int i = 0; i < nrows; ++i) {
+      weightLHS(i, j) = std::pow(fixedAbscissae[j], i);
+    }
+  }
+
+  // each node has a separate RHS
+  Teuchos::SerialDenseVector<int, double> weightRHS(nrows);
+  for (int i = 0; i < nrows; ++i) {
+    weightRHS(i) = (std::pow(xright, i + 1) - std::pow(xleft, i + 1)) / (i + 1.0);
+  }
+
+  Teuchos::SerialDenseSolver<int, double> solver;
+  Teuchos::SerialDenseVector<int, double> quadratureWeights(nrows);
+  solver.setMatrix(Teuchos::rcp(&weightLHS, false));
+  solver.setVectors(
+    Teuchos::rcp(&quadratureWeights, false),
+    Teuchos::rcp(&weightRHS, false)
+  );
+  solver.solve();
+
+  return quadratureWeights;
+}
+
+//--------------------------------------------------------------------
+std::pair<std::vector<double>, std::vector<double>>
+SGL_quadrature_rule(
+  int order,
+  std::vector<double> scsEndLocations)
+{
+  /*
+   * Produces the weights for a fixed
+   * N-point (order) integration rule over a fixed N-number
+   * of subintervals, the locations of which are provided by scsEndLocations
+   *
+   * This is the special "Segmented Gauss Lobatto" quadrature rule designed for CVFEM
+   *
+   * Output is the 1-dimensional fixed abscissae with the corresponding
+   * NxN weights
+   */
+  int N = order;
+
+  std::vector<double> fixedAbscissae;
+  std::tie(fixedAbscissae, std::ignore) = gauss_lobatto_legendre_rule(N);
+
+  std::vector<double> weightTensor(N*N);
+  Teuchos::SerialDenseVector<int, double> scvWeights(N);
+  for (int j = 0; j < N; ++j) {
+    scvWeights = subinterval_weights_for_fixed_abscissae(
+      fixedAbscissae,
+      scsEndLocations[j], scsEndLocations[j+1]
+    );
+
+    // save to a standard container
+    for (int i = 0; i < N; ++i) {
+      weightTensor[i + j * N] = scvWeights[i];
+    }
+  }
+
+  return std::make_pair(fixedAbscissae, weightTensor);
 }
 
 }  // namespace nalu

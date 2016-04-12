@@ -182,8 +182,8 @@ ComputeMdotElemAlgorithm::execute()
       //===============================================
       // gather nodal data; this is how we do it now..
       //===============================================
-      stk::mesh::Entity const * node_rels = realm_.begin_nodes_all(b,k);
-      int num_nodes = realm_.num_nodes_all(b,k);
+      stk::mesh::Entity const * node_rels = b.begin_nodes(k);
+      int num_nodes = b.num_nodes(k);
 
       // sanity check on num nodes
       ThrowAssert( num_nodes == nodesPerElement );
@@ -320,7 +320,7 @@ ComputeMdotElemAlgorithm::assemble_edge_mdot()
       const double *scsMdot = stk::mesh::field_data(*massFlowRate_, elem );
 
       // Use node Entity because we'll need to call BulkData::identifier(.).
-      stk::mesh::Entity const * elem_node_rels = realm_.begin_nodes_all(b,k);
+      stk::mesh::Entity const * elem_node_rels = b.begin_nodes(k);
 
       // iterate edges
       stk::mesh::Entity const * elem_edge_rels = b.begin_edges(k);

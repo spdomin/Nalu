@@ -432,7 +432,7 @@ TpetraLinearSystem::buildEdgeToNodeGraph(const stk::mesh::PartVector & parts)
     const stk::mesh::Bucket & b = **ib ;
     const stk::mesh::Bucket::size_type length   = b.size();
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
-      stk::mesh::Entity const * edge_nodes = realm_.begin_nodes_all(b,k);
+      stk::mesh::Entity const * edge_nodes = b.begin_nodes(k);
 
       // figure out the global dof ids for each dof on each node
       for(size_t n=0; n < numNodes; ++n) {
@@ -461,10 +461,10 @@ TpetraLinearSystem::buildFaceToNodeGraph(const stk::mesh::PartVector & parts)
     const stk::mesh::Bucket & b = **ib ;
     const stk::mesh::Bucket::size_type length   = b.size();
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
-      stk::mesh::Entity const * face_nodes = realm_.begin_nodes_all(b,k);
+      stk::mesh::Entity const * face_nodes = b.begin_nodes(k);
 
       // figure out the global dof ids for each dof on each node
-      const size_t numNodes = realm_.num_nodes_all(b,k);
+      const size_t numNodes = b.num_nodes(k);
       entities.resize(numNodes);
       for(size_t n=0; n < numNodes; ++n) {
         entities[n] = face_nodes[n];
@@ -492,9 +492,9 @@ TpetraLinearSystem::buildElemToNodeGraph(const stk::mesh::PartVector & parts)
     const stk::mesh::Bucket & b = **ib ;
     const stk::mesh::Bucket::size_type length   = b.size();
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
-      stk::mesh::Entity const * elem_nodes = realm_.begin_nodes_all(b,k);
+      stk::mesh::Entity const * elem_nodes = b.begin_nodes(k);
       // figure out the global dof ids for each dof on each node
-      const size_t numNodes = realm_.num_nodes_all(b,k);
+      const size_t numNodes = b.num_nodes(k);
       entities.resize(numNodes);
       for(size_t n=0; n < numNodes; ++n) {
         entities[n] = elem_nodes[n];
@@ -529,7 +529,7 @@ TpetraLinearSystem::buildReducedElemToNodeGraph(const stk::mesh::PartVector & pa
 
     const stk::mesh::Bucket::size_type length   = b.size();
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
-      stk::mesh::Entity const * elem_nodes = realm_.begin_nodes_all(b,k);
+      stk::mesh::Entity const * elem_nodes = b.begin_nodes(k);
 
       // figure out the global dof ids for each dof on each node
       const size_t numNodes = 2;
@@ -566,15 +566,15 @@ TpetraLinearSystem::buildFaceElemToNodeGraph(const stk::mesh::PartVector & parts
       const stk::mesh::Entity face = b[k];
 
       // extract the connected element to this exposed face; should be single in size!
-      const stk::mesh::Entity* face_elem_rels = bulkData.begin_elements(face);
+      const stk::mesh::Entity* face_elem_rels = realm_.face_elem_map(face);
       ThrowAssert( bulkData.num_elements(face) == 1 );
 
       // get connected element and nodal relations
       stk::mesh::Entity element = face_elem_rels[0];
-      const stk::mesh::Entity* elem_nodes = realm_.begin_nodes_all(element);
+      const stk::mesh::Entity* elem_nodes = bulkData.begin_nodes(element);
 
       // figure out the global dof ids for each dof on each node
-      const size_t numNodes = realm_.num_nodes_all(element);
+      const size_t numNodes = bulkData.num_nodes(element);
       entities.resize(numNodes);
       for(size_t n=0; n < numNodes; ++n) {
         entities[n] = elem_nodes[n];
@@ -588,6 +588,7 @@ void
 TpetraLinearSystem::buildEdgeHaloNodeGraph(
   const stk::mesh::PartVector &/*parts*/)
 {
+  stk::mesh::BulkData & bulkData = realm_.bulk_data();
   beginLinearSystemConstruction();
 
   std::vector<stk::mesh::Entity> entities;
@@ -611,8 +612,8 @@ TpetraLinearSystem::buildEdgeHaloNodeGraph(
       stk::mesh::Entity node = infoObject->faceNode_;
 
       // relations
-      stk::mesh::Entity const* elem_nodes = realm_.begin_nodes_all(elem);
-      const size_t numNodes = realm_.num_nodes_all(elem);
+      stk::mesh::Entity const* elem_nodes = bulkData.begin_nodes(elem);
+      const size_t numNodes = bulkData.num_nodes(elem);
       const size_t numEntities = numNodes+1;
       entities.resize(numEntities);
 
@@ -629,6 +630,7 @@ void
 TpetraLinearSystem::buildNonConformalNodeGraph(
   const stk::mesh::PartVector &/*parts*/)
 {
+  stk::mesh::BulkData & bulkData = realm_.bulk_data();
   beginLinearSystemConstruction();
 
   std::vector<stk::mesh::Entity> entities;
@@ -656,10 +658,10 @@ TpetraLinearSystem::buildNonConformalNodeGraph(
         stk::mesh::Entity opposingElement = dgInfo->opposingElement_;
         
         // node relations; current and opposing
-        stk::mesh::Entity const* current_elem_node_rels = realm_.begin_nodes_all(currentElement);
-        const int current_num_elem_nodes = realm_.num_nodes_all(currentElement);
-        stk::mesh::Entity const* opposing_elem_node_rels = realm_.begin_nodes_all(opposingElement);
-        const int opposing_num_elem_nodes = realm_.num_nodes_all(opposingElement);
+        stk::mesh::Entity const* current_elem_node_rels = bulkData.begin_nodes(currentElement);
+        const int current_num_elem_nodes = bulkData.num_nodes(currentElement);
+        stk::mesh::Entity const* opposing_elem_node_rels = bulkData.begin_nodes(opposingElement);
+        const int opposing_num_elem_nodes = bulkData.num_nodes(opposingElement);
         
         // resize based on both current and opposing face node size
         entities.resize(current_num_elem_nodes+opposing_num_elem_nodes);
@@ -711,8 +713,8 @@ TpetraLinearSystem::buildOversetNodeGraph(
       continue;
 
     // relations
-    stk::mesh::Entity const* elem_nodes = realm_.begin_nodes_all(owningElement);
-    const size_t numNodes = realm_.num_nodes_all(owningElement);
+    stk::mesh::Entity const* elem_nodes = bulkData.begin_nodes(owningElement);
+    const size_t numNodes = bulkData.num_nodes(owningElement);
     const size_t numEntities = numNodes+1;
     entities.resize(numEntities);
     
@@ -788,17 +790,13 @@ TpetraLinearSystem::finalizeLinearSystem()
   const int this_mpi_rank = bulkData.parallel_rank();
   (void)this_mpi_rank;
 
-  ConnectionVec connectionVec(connectionSet_.begin(), connectionSet_.end());
-  connectionSet_.clear();
-  std::sort(connectionVec.begin(), connectionVec.end());
-
   std::vector<GlobalOrdinal> globalDofs_a(numDof_);
   std::vector<GlobalOrdinal> globalDofs_b(numDof_);
   std::ostringstream out2;
-  const size_t numConnections = connectionVec.size();
-  for (size_t i=0; i < numConnections; ++i) {
-    const stk::mesh::Entity entity_a = connectionVec[i].first;
-    const stk::mesh::Entity entity_b = connectionVec[i].second;
+
+  for (const auto& connection : connectionSet_) {
+    const stk::mesh::Entity entity_a = connection.first;
+    const stk::mesh::Entity entity_b = connection.second;
 
     const stk::mesh::EntityId entityId_a = *stk::mesh::field_data(*realm_.naluGlobalId_, entity_a);
     const stk::mesh::EntityId entityId_b = *stk::mesh::field_data(*realm_.naluGlobalId_, entity_b);
@@ -851,9 +849,9 @@ TpetraLinearSystem::finalizeLinearSystem()
   ownedGraph_ = Teuchos::rcp(new LinSys::Graph(ownedRowsMap_, totalColsMap_, 8));
 
   // Insert all the local connection data
-  for (size_t i=0; i < numConnections; ++i) {
-    const stk::mesh::Entity entity_a = connectionVec[i].first;
-    const stk::mesh::Entity entity_b = connectionVec[i].second;
+  for (const auto& connection : connectionSet_) {
+    const stk::mesh::Entity entity_a = connection.first;
+    const stk::mesh::Entity entity_b = connection.second;
 
     const stk::mesh::EntityId entityId_a = *stk::mesh::field_data(*realm_.naluGlobalId_, entity_a);
     const stk::mesh::EntityId entityId_b = *stk::mesh::field_data(*realm_.naluGlobalId_, entity_b);
@@ -882,6 +880,7 @@ TpetraLinearSystem::finalizeLinearSystem()
       }
     }
   }
+  connectionSet_.clear();
 
   // add imported graph information
   {
