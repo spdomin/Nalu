@@ -231,7 +231,7 @@ ExtrusionMeshDistanceBoundaryAlgorithm::execute()
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec, face);
 
       // face node relations for nodal gather
-      stk::mesh::Entity const* face_node_rels = realm_.begin_side_nodes_all(face);
+      stk::mesh::Entity const* face_node_rels = bulk_data.begin_nodes(face);
 
       // one to one mapping between ips and nodes
       for ( int ip = 0; ip < num_face_nodes; ++ip ) {

@@ -446,31 +446,21 @@ public:
 
     // integrate over the IPs
     // Needs to be done for each node (?) for the LHS
-    int node_offset = 0;
-    for (int ic = 0; ic < nodesPerElement_; ++ic) {
-      int line_offset = 0;
-      for (int lineNumber = 0; lineNumber < numLines_; ++lineNumber) {
-        if (nDim_ == 2) {
-          quadOp_->surface_2D(p_lhs_integrand_, p_lhs_integrated_, node_offset+line_offset);
-        }
-        else {
-          quadOp_->surface_3D(p_lhs_integrand_, p_lhs_integrated_, node_offset+line_offset);
-        }
-        line_offset += ipsPerFace_;
+    if (nDim_ == 2) {
+      int node_offset = 0;
+      for (int ic = 0; ic < nodesPerElement_; ++ic) {
+        quadOp_->surfaces_2D(p_lhs_integrand_ + node_offset,  p_lhs_integrated_ + node_offset);
+        node_offset += numScsIp_;
       }
-      node_offset += numScsIp_;
+      quadOp_->surfaces_2D(p_rhs_integrand_, p_rhs_integrated_);
     }
-
-    // RHS
-    int line_offset = 0;
-    for (int lineNumber = 0; lineNumber < numLines_; ++lineNumber) {
-      if (nDim_ == 2) {
-        quadOp_->surface_2D(p_rhs_integrand_, p_rhs_integrated_, line_offset);
+    else {
+      int node_offset = 0;
+      for (int ic = 0; ic < nodesPerElement_; ++ic) {
+        quadOp_->surfaces_3D(p_lhs_integrand_ + node_offset,  p_lhs_integrated_ + node_offset);
+        node_offset += numScsIp_;
       }
-      else {
-        quadOp_->surface_3D(p_rhs_integrand_, p_rhs_integrated_, line_offset);
-      }
-      line_offset += ipsPerFace_;
+      quadOp_->surfaces_3D(p_rhs_integrand_, p_rhs_integrated_);
     }
 
     // scatter

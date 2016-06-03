@@ -67,6 +67,7 @@ void
 ComputeTurbKineticEnergyWallFunctionAlgorithm::execute()
 {
 
+  stk::mesh::BulkData & bulk_data = realm_.bulk_data();
   stk::mesh::MetaData & meta_data = realm_.meta_data();
 
   const int nDim = meta_data.spatial_dimension();
@@ -84,6 +85,8 @@ ComputeTurbKineticEnergyWallFunctionAlgorithm::execute()
         ib != face_buckets.end() ; ++ib ) {
     stk::mesh::Bucket & b = **ib ;
 
+    // face master element; only need the face topo
+    const int nodesPerFace = b.topology().num_nodes();
     const stk::mesh::Bucket::size_type length   = b.size();
 
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
@@ -92,8 +95,7 @@ ComputeTurbKineticEnergyWallFunctionAlgorithm::execute()
       stk::mesh::Entity face = b[k];
 
       // get relations to nodes
-      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
-      const int nodesPerFace = realm_.num_side_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
 
       // pointer to face data
       const double * areaVec = stk::mesh::field_data(*exposedAreaVec_, face);

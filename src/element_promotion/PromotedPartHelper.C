@@ -5,10 +5,13 @@
 /*  directory structure                                                   */
 /*------------------------------------------------------------------------*/
 #include <element_promotion/PromotedPartHelper.h>
+#include <NaluEnv.h>
 
 #include <stk_mesh/base/MetaData.hpp>
 #include <stk_mesh/base/Part.hpp>
 #include <stk_util/environment/ReportHandler.hpp>
+#include <stk_topology/topology.hpp>
+
 
 #include <algorithm>
 #include <vector>
@@ -18,43 +21,101 @@ namespace sierra{
 namespace nalu{
 
   // A set of functions to deal with part pairs having specific ending tags
-
   bool part_vector_is_valid(const stk::mesh::PartVector& parts) {
     return (std::find(parts.begin(), parts.end(), nullptr) == parts.end() && !parts.empty() );
   }
   //--------------------------------------------------------------------------
-  std::string promotion_suffix()
+  bool check_part_topo(const stk::mesh::Part& part) {
+    const int dim = part.mesh_meta_data().spatial_dimension();
+    bool is_valid_elem_rank = false;
+    const stk::topology topo = part.topology();
+    if (topo.rank() == stk::topology::ELEM_RANK) {
+      is_valid_elem_rank = (dim == 2) ? topo == stk::topology::QUAD_4_2D : topo == stk::topology::HEX_8;
+    }
+
+    bool is_valid_side_rank = false;
+    if (topo.rank() == part.mesh_meta_data().side_rank()) {
+      is_valid_side_rank = (dim == 2) ? topo == stk::topology::LINE_2 : topo == stk::topology::QUAD_4;
+    }
+
+    if (!(is_valid_side_rank || is_valid_elem_rank)) {
+      NaluEnv::self().naluOutputP0()
+                  << "Part "  << part.name()
+                  << " has an invalid topology for promotion, " << topo.name()
+                  << "---only pure Hex/Quad meshes are currently supported." << std::endl;
+
+      return false;
+    }
+    return true;
+  }
+  //--------------------------------------------------------------------------
+  bool check_parts_for_promotion(const stk::mesh::PartVector& parts)
   {
-    return "_promoted";
+    for (const auto* ip : parts) {
+      ThrowRequireMsg(ip != nullptr, "An invalid part was designated for promotion.");
+      const stk::mesh::Part& part = *ip;
+      if (part.subsets().empty()) {
+        if (!check_part_topo(part)) {
+          return false;
+        }
+      }
+      else {
+        for (const auto* is : part.subsets()) {
+          ThrowRequireMsg(is != nullptr, "An invalid subset part was designated for promotion.");
+          const stk::mesh::Part& subsetPart = *is;
+          if (!check_part_topo(subsetPart)) {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
   }
   //--------------------------------------------------------------------------
   std::string super_element_suffix()
   {
-    return "_se";
+    return "se";
   }
   //--------------------------------------------------------------------------
-  std::string promote_part_name(const std::string& base_name)
-  {
-    ThrowAssertMsg(!base_name.empty(), "Empty base name for promoted part");
-    return (base_name+promotion_suffix());
-  }
-  //--------------------------------------------------------------------------
-  std::string super_element_part_name(const std::string& base_name)
+  std::string super_element_part_name(std::string base_name)
   {
     ThrowAssertMsg(!base_name.empty(), "Empty base name for super elem part");
-    return (base_name+super_element_suffix());
+    return (base_name + super_element_suffix());
   }
   //--------------------------------------------------------------------------
-  std::string base_element_part_name(const std::string& super_name)
+  std::string super_subset_part_name(const std::string& base_name, int numElemNodes, int numSideNodes)
+  {
+    // subsetted part name.  Goes like "surfacese_super512_superside64_1"
+    // Ioss doesn't recognize "superside" but does recognize the "super" tag
+
+    // Note: there's a 32 character limit on the maximum length of the
+    // part name (Ioss throws a warning message), so economy on characters is good
+
+    ThrowAssertMsg(!base_name.empty(), "Empty base name for super elem part");
+    auto first_token = base_name.substr(0, base_name.find_first_of('_'));
+    auto last_token = base_name.substr(base_name.find_last_of("_"),base_name.length());
+    std::string name = first_token + super_element_suffix()
+        + "_super"  + std::to_string(numElemNodes)
+        + "_superside" + std::to_string(numSideNodes)
+        + last_token;
+
+    return name;
+  }
+  //--------------------------------------------------------------------------
+  std::string base_element_part_name(std::string super_name)
   {
     ThrowRequireMsg(super_name.find(super_element_suffix()) != std::string::npos,
       "Not a super-element part name!");
-    return (super_name.substr(0,super_name.length()-super_element_suffix().length()));
+    return (super_name.erase(super_name.find(super_element_suffix()),super_element_suffix().length()));
   }
   //--------------------------------------------------------------------------
   stk::mesh::Part* super_elem_part(const stk::mesh::Part& part)
   {
     return (part.mesh_meta_data().get_part(super_element_part_name(part.name())));
+  }
+  stk::mesh::Part* super_subset_part(const stk::mesh::Part& part, int numElemNodes, int numSideNodes)
+  {
+    return (part.mesh_meta_data().get_part(super_subset_part_name(part.name(), numElemNodes, numSideNodes)));
   }
   //--------------------------------------------------------------------------
   stk::mesh::Part* base_elem_part_from_super_elem_part(const stk::mesh::Part& super_elem_part)
@@ -68,25 +129,6 @@ namespace nalu{
     return (part->mesh_meta_data().get_part(super_element_part_name(part->name())));
   }
   //--------------------------------------------------------------------------
-  stk::mesh::Part* promoted_part(const stk::mesh::Part& part)
-  {
-    return (part.mesh_meta_data().get_part(promote_part_name(part.name())));
-  }
-  //--------------------------------------------------------------------------
-  stk::mesh::Part* promoted_part(const stk::mesh::Part* part)
-  {
-    ThrowAssert(part != nullptr);
-    return (part->mesh_meta_data().get_part(promote_part_name(part->name())));
-  }
-  //--------------------------------------------------------------------------
-  void transform_to_promoted_part_vector(stk::mesh::PartVector& parts)
-  {
-    ThrowAssert(part_vector_is_valid(parts));
-    std::transform(parts.begin(), parts.end(), parts.begin(), [](stk::mesh::Part* part) {
-      return promoted_part(part);
-    });
-  }
-  //--------------------------------------------------------------------------
   void transform_to_super_elem_part_vector(stk::mesh::PartVector& parts)
   {
     ThrowAssert(part_vector_is_valid(parts));
@@ -94,21 +136,52 @@ namespace nalu{
       return super_elem_part(part);
     });
   }
-  //--------------------------------------------------------------------------
-  stk::mesh::PartVector promote_part_vector(stk::mesh::PartVector parts)
+  //------------------------------------------------------------------------
+  bool is_super(const stk::mesh::Part* p) {
+    return (p->topology().is_superedge()
+         || p->topology().is_superface()
+         || p->topology().is_superelement());
+  }
+  //------------------------------------------------------------------------
+  bool is_side(const stk::mesh::Part* p) {
+    return (p->mesh_meta_data().side_rank() == p->topology().side_rank());
+  }
+  //------------------------------------------------------------------------
+  bool is_super_side(const stk::mesh::Part* p) {
+    return (is_super(p) && is_side(p));
+  }
+   //------------------------------------------------------------------------
+  stk::mesh::PartVector base_ranked_parts(const stk::mesh::PartVector& parts, stk::topology::rank_t rank)
   {
-    transform_to_promoted_part_vector(parts);
-    return parts;
+    ThrowAssert(part_vector_is_valid(parts));
+
+    stk::mesh::PartVector elemParts;
+    std::copy_if(parts.begin(), parts.end(), std::back_inserter(elemParts), [rank](stk::mesh::Part* p) {
+      return (p->topology().rank() == rank && !is_super(p));
+    });
+    return elemParts;
   }
   //--------------------------------------------------------------------------
   stk::mesh::PartVector base_elem_parts(const stk::mesh::PartVector& parts)
+  {
+    return base_ranked_parts(parts, stk::topology::ELEM_RANK);
+  }
+  //--------------------------------------------------------------------------
+  stk::mesh::PartVector only_super_parts(const stk::mesh::PartVector& parts)
   {
     ThrowAssert(part_vector_is_valid(parts));
 
     stk::mesh::PartVector elemParts;
     std::copy_if(parts.begin(), parts.end(), std::back_inserter(elemParts), [](stk::mesh::Part* p) {
-      return (p->topology().rank() == stk::topology::ELEM_RANK
-           && p->topology() < stk::topology::SUPERELEMENT_START);
+      if (is_super(p)) {
+        return true;
+      }
+      for (const auto* subset : p->subsets()) {
+        if (is_super(subset)) {
+          return true;
+        }
+      }
+      return false;
     });
     return elemParts;
   }
@@ -119,9 +192,28 @@ namespace nalu{
 
     stk::mesh::PartVector elemParts;
     std::copy_if(parts.begin(), parts.end(), std::back_inserter(elemParts), [](stk::mesh::Part* p) {
-      return (p->topology() >= stk::topology::SUPERELEMENT_START);
+      return (p->topology().is_superelement());
     });
     return elemParts;
+  }
+  //--------------------------------------------------------------------------
+  stk::mesh::PartVector only_super_side_parts(const stk::mesh::PartVector& parts)
+  {
+    ThrowAssert(part_vector_is_valid(parts));
+
+    stk::mesh::PartVector faceParts;
+    std::copy_if(parts.begin(), parts.end(), std::back_inserter(faceParts), [](stk::mesh::Part* p) {
+      if (is_super(p) && is_side(p)) {
+        return true;
+      }
+      for (const auto* subset : p->subsets()) {
+        if (is_super(subset) && is_side(subset)) {
+          return true;
+        }
+      }
+      return false;
+    });
+    return faceParts;
   }
   //--------------------------------------------------------------------------
   stk::mesh::PartVector super_elem_part_vector(const stk::mesh::PartVector& parts)
@@ -131,29 +223,22 @@ namespace nalu{
     return baseElemParts;
   }
   //--------------------------------------------------------------------------
-  stk::mesh::PartVector append_super_elems_to_part_vector(stk::mesh::PartVector parts)
-  {
-    auto superElemParts = super_elem_part_vector(parts);
-    parts.insert(parts.end(), superElemParts.begin(), superElemParts.end());
-    return parts;
-  }
-  //--------------------------------------------------------------------------
   size_t
   num_sub_elements(
-    const stk::mesh::MetaData& metaData,
+    const int dim,
     const stk::mesh::BucketVector& buckets,
     unsigned polyOrder)
   {
+    ThrowRequire(dim == 2 || dim == 3);
+    int faceSize = std::pow(polyOrder,dim-1);
+    int elemSize = std::pow(polyOrder,dim);
+    auto side_rank = (dim == 2) ? stk::topology::EDGE_RANK : stk::topology::FACE_RANK;
     unsigned numEntities = 0;
     for (const auto* ib : buckets) {
-      unsigned subElemsPerElem =
-          (ib->topology().rank() == metaData.side_rank()) ?
-              std::pow(polyOrder, metaData.spatial_dimension() - 1) :
-              std::pow(polyOrder, metaData.spatial_dimension());
-
+      unsigned subElemsPerElem = (ib->topology().rank() == side_rank) ? faceSize : elemSize;
       numEntities += ib->size()*subElemsPerElem;
     }
-    return (numEntities);
+    return numEntities;
   }
   //--------------------------------------------------------------------------
   size_t

@@ -957,5 +957,5 @@ OversetManager::complete_search(
   }  
 }
 
-} // namespace naluUnit
+} // namespace nalu
 } // namespace Sierra

@@ -43,7 +43,7 @@ TensorProductQuadratureRule::TensorProductQuadratureRule(
     }
     useSGL_ = false;
   }
-  else if (type == "SGL"){
+  else if (type == "SGL") {
     int numNodes = scsLocs.size()+1;
     numQuad_ = 1; // only 1 quadrature point per scv
     std::tie(abscissae_, weights_) = SGL_quadrature_rule(numNodes, scsEndLoc_);

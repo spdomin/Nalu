@@ -21,13 +21,9 @@
 #include <yaml-cpp/yaml.h>
 #include <NaluParsing.h>
 
-// For naming convention
-#include <element_promotion/PromotedPartHelper.h>
-
 // basic c++
 #include <stdexcept>
 #include <map>
-#include <algorithm>
 
 namespace sierra{
 namespace nalu{
@@ -344,18 +340,6 @@ MaterialPropertys::load(const YAML::Node & node)
       }  
     } 
   }
-}
-
-//--------------------------------------------------------------------------
-//-------- switch_to_super_element_target_names ----------------------------
-//--------------------------------------------------------------------------
-void
-MaterialPropertys::switch_to_super_element_target_names()
-{
-  std::transform(targetNames_.begin(), targetNames_.end(), targetNames_.begin(),
-    [](const std::string& name) {
-       return super_element_part_name(name);
-  });
 }
 
 Simulation* MaterialPropertys::root() { return parent()->root(); }

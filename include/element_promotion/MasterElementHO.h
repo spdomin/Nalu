@@ -19,10 +19,9 @@ namespace nalu{
     double weight;
   };
 
-// 2D Quad 16 subcontrol volume
 struct ElementDescription;
 
-class HigherOrderHexSCV : public MasterElement
+class HigherOrderHexSCV final: public MasterElement
 {
 public:
   HigherOrderHexSCV(const ElementDescription& elem);
@@ -37,21 +36,23 @@ public:
     double *volume,
     double * error ) final;
 
-  const ElementDescription& elem_;
-  std::vector<double> ipWeight_;
-  std::vector<double> shapeFunctions_;
-  std::vector<double> shapeDerivs_;
-
 private:
   void set_interior_info();
 
   double jacobian_determinant(
     const double *elemNodalCoords,
     const double *shapeDerivs ) const;
+
+  const ElementDescription& elem_;
+  std::vector<double> ipWeight_;
+  std::vector<double> shapeFunctions_;
+  std::vector<double> shapeDerivs_;
+  std::vector<double> geometricShapeDerivs_;
+  int geometricNodesPerElement_;
 };
 
 // 3D Hex 27 subcontrol surface
-class HigherOrderHexSCS : public MasterElement
+class HigherOrderHexSCS final: public MasterElement
 {
 public:
   HigherOrderHexSCS(const ElementDescription& elem);
@@ -63,7 +64,7 @@ public:
     const int nelem,
     const double *coords,
     double *areav,
-    double * error ) final;
+    double * error) final;
 
   void grad_op(
     const int nelem,
@@ -71,7 +72,7 @@ public:
     double *gradop,
     double *deriv,
     double *det_j,
-    double * error ) final;
+    double * error) final;
 
   void face_grad_op(
     const int nelem,
@@ -79,7 +80,7 @@ public:
     const double *coords,
     double *gradop,
     double *det_j,
-    double * error ) final;
+    double * error) final;
 
   void gij(
     const double *coords,
@@ -91,16 +92,15 @@ public:
 
   const int * ipNodeMap(int ordinal = 0) final;
 
+  const int * side_node_ordinals(int ordinal = 0) final;
+
   int opposingNodes(
     const int ordinal, const int node) final;
 
   int opposingFace(
     const int ordinal, const int node) final;
 
-  const ElementDescription& elem_;
-  std::vector<double> shapeFunctions_;
-  std::vector<double> shapeDerivs_;
-  std::vector<double> expFaceShapeDerivs_;
+
 
 private:
   void set_interior_info();
@@ -118,12 +118,25 @@ private:
     double* grad,
     double* det_j ) const;
 
+  void gradient(
+    const double* elemNodalCoords,
+    const double* geometricShapeDeriv,
+    const double* shapeDeriv,
+    double* grad,
+    double* det_j ) const;
+
+  const ElementDescription& elem_;
+  std::vector<double> shapeFunctions_;
+  std::vector<double> shapeDerivs_;
+  std::vector<double> expFaceShapeDerivs_;
+  std::vector<double> geometricShapeDerivs_;
+  int geometricNodesPerElement_;
   std::vector<ContourData> ipInfo_;
   int ipsPerFace_;
 };
 
 // 3D Quad 9
-class HigherOrderQuad3DSCS : public MasterElement
+class HigherOrderQuad3DSCS final: public MasterElement
 {
 public:
   HigherOrderQuad3DSCS(const ElementDescription& elem);
@@ -138,10 +151,6 @@ public:
     const double *coords,
     double *areav,
     double * error );
-
-  const ElementDescription& elem_;
-  std::vector<double> shapeFunctions_;
-  std::vector<double> shapeDerivs_;
 
 private:
   void set_interior_info();
@@ -165,11 +174,14 @@ private:
     double* deriv
   ) const;
 
+  const ElementDescription& elem_;
+  std::vector<double> shapeFunctions_;
+  std::vector<double> shapeDerivs_;
   std::vector<double> ipWeight_;
   int surfaceDimension_;
 };
 
-class HigherOrderQuad2DSCV : public MasterElement
+class HigherOrderQuad2DSCV final: public MasterElement
 {
 public:
   explicit HigherOrderQuad2DSCV(const ElementDescription& elem);
@@ -185,18 +197,21 @@ public:
     double *volume,
     double * error ) final;
 
-  const ElementDescription& elem_;
-  std::vector<double> ipWeight_;
-  std::vector<double> shapeFunctions_;
-  std::vector<double> shapeDerivs_;
 private:
   void set_interior_info();
 
   double jacobian_determinant(
     const double *elemNodalCoords,
     const double *shapeDerivs ) const;
+
+  const ElementDescription& elem_;
+  std::vector<double> ipWeight_;
+  std::vector<double> shapeFunctions_;
+  std::vector<double> shapeDerivs_;
+  std::vector<double> geometricShapeDerivs_;
+  int geometricNodesPerElement_;
 };
-class HigherOrderQuad2DSCS : public MasterElement
+class HigherOrderQuad2DSCS final: public MasterElement
 {
 public:
   explicit HigherOrderQuad2DSCS(const ElementDescription& elem);
@@ -242,7 +257,7 @@ public:
   int opposingFace(
     const int ordinal, const int node) final;
 
-  std::vector<double> shapeFunctions_;
+  const int * side_node_ordinals(int ordinal = 0) final;
 
 private:
   void set_interior_info();
@@ -260,16 +275,25 @@ private:
     double* grad,
     double* det_j) const;
 
+  void gradient(
+    const double* elemNodalCoords,
+    const double* geometricShapeDeriv,
+    const double* shapeDeriv,
+    double* grad,
+    double* det_j ) const;
 
   const ElementDescription& elem_;
+  std::vector<double> ipWeight_;
+  std::vector<double> shapeFunctions_;
+  std::vector<double> shapeDerivs_;
+  std::vector<double> geometricShapeDerivs_;
+  int geometricNodesPerElement_;
   std::vector<ContourData> ipInfo_;
   int ipsPerFace_;
-
-  std::vector<double> shapeDerivs_;
   std::vector<double> expFaceShapeDerivs_;
 };
 
-class HigherOrderEdge2DSCS : public MasterElement
+class HigherOrderEdge2DSCS final: public MasterElement
 {
 public:
   explicit HigherOrderEdge2DSCS(const ElementDescription& elem);
@@ -286,7 +310,6 @@ public:
   void shape_fcn(
     double *shpfc) final;
 
-  std::vector<double> shapeFunctions_;
 private:
   void area_vector(
     const double* elemNodalCoords,
@@ -295,7 +318,7 @@ private:
 
   const ElementDescription& elem_;
   std::vector<double> ipWeight_;
-
+  std::vector<double> shapeFunctions_;
   std::vector<double> shapeDerivs_;
 };
 

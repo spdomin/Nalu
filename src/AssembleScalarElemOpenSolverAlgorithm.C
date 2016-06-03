@@ -159,7 +159,7 @@ AssembleScalarElemOpenSolverAlgorithm::execute()
     MasterElement *meFC = realm_.get_surface_master_element(b.topology());
     const int nodesPerFace = meFC->nodesPerElement_;
     const int numScsBip = meFC->numIntPoints_;
-    std::vector<int> face_node_ordinal_vec(nodesPerFace);
+
 
     // resize some things; matrix related
     const int lhsSize = nodesPerElement*nodesPerElement;
@@ -206,8 +206,8 @@ AssembleScalarElemOpenSolverAlgorithm::execute()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
-      int num_face_nodes = realm_.num_side_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
+      int num_face_nodes = bulk_data.num_nodes(face);
       // sanity check on num nodes
       ThrowAssert( num_face_nodes == nodesPerFace );
       for ( int ni = 0; ni < num_face_nodes; ++ni ) {
@@ -226,13 +226,13 @@ AssembleScalarElemOpenSolverAlgorithm::execute()
       }
 
       // extract the connected element to this exposed face; should be single in size!
-      const stk::mesh::Entity* face_elem_rels = realm_.face_elem_map(face);
+      const stk::mesh::Entity* face_elem_rels = bulk_data.begin_elements(face);
       ThrowAssert( bulk_data.num_elements(face) == 1 );
 
-      // get element; its face ordinal number and populate face_node_ordinal_vec
+      // get element; its face ordinal number and populate face_node_ordinals
       stk::mesh::Entity element = face_elem_rels[0];
       const int face_ordinal = bulk_data.begin_element_ordinals(face)[0];
-      realm_.side_node_ordinals_all(theElemTopo,face_ordinal,face_node_ordinal_vec);
+      const int *face_node_ordinals = meSCS->side_node_ordinals(face_ordinal);
 
       // mapping from ip to nodes for this ordinal
       const int *ipNodeMap = meSCS->ipNodeMap(face_ordinal);
@@ -332,7 +332,7 @@ AssembleScalarElemOpenSolverAlgorithm::execute()
           const double fac = tmdot*(pecfac*om_alphaUpw+om_pecfac);
           for ( int ic = 0; ic < nodesPerFace; ++ic ) {
             const double r = p_face_shape_function[offSetSF_face+ic];
-            const int nn = face_node_ordinal_vec[ic];
+            const int nn = face_node_ordinals[ic];
             p_lhs[rowR+nn] += r*fac;
           }
         }

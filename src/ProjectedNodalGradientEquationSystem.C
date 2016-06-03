@@ -140,6 +140,19 @@ ProjectedNodalGradientEquationSystem::register_nodal_fields(
   stk::mesh::put_field(*qTmp_, *part, nDim);
 }
 
+
+template<class Algorithm, typename Map,  typename... Args>
+void register_algorithm(stk::mesh::Part* part, AlgorithmType algType, Map& map, Args&&... args)
+{
+  auto its = map.find(algType);
+  if (its == map.end()) {
+    map[algType] = new Algorithm(std::forward<Args>(args)...);
+  }
+  else {
+    its->second->partVec_.push_back(part);
+  }
+}
+
 //--------------------------------------------------------------------------
 //-------- register_interior_algorithm -------------------------------------
 //--------------------------------------------------------------------------
@@ -150,17 +163,10 @@ ProjectedNodalGradientEquationSystem::register_interior_algorithm(
   // types of algorithms
   const AlgorithmType algType = INTERIOR;
 
-  // solver
-  std::map<AlgorithmType, SolverAlgorithm *>::iterator its
-    = solverAlgDriver_->solverAlgMap_.find(algType);
-  if ( its == solverAlgDriver_->solverAlgMap_.end() ) {
-    AssemblePNGElemSolverAlgorithm *theAlg
-      = new AssemblePNGElemSolverAlgorithm(realm_, part, this, independentDofName_, dofName_);
-    solverAlgDriver_->solverAlgMap_[algType] = theAlg;
-  }
-  else {
-    its->second->partVec_.push_back(part);
-  }
+  register_algorithm<AssemblePNGElemSolverAlgorithm>(
+    part, algType, solverAlgDriver_->solverAlgMap_,
+    realm_, part, this, independentDofName_, dofName_
+  );
 }
 
 //--------------------------------------------------------------------------
@@ -174,20 +180,12 @@ ProjectedNodalGradientEquationSystem::register_wall_bc(
 {
 
   const AlgorithmType algType = WALL;
-
-  // extract the field name for this bc type
   std::string fieldName = get_name_given_bc(WALL_BC);
-  // create lhs/rhs algorithm;
-  std::map<AlgorithmType, SolverAlgorithm *>::iterator its =
-    solverAlgDriver_->solverAlgMap_.find(algType);
-  if ( its == solverAlgDriver_->solverAlgMap_.end() ) {
-    AssemblePNGBoundarySolverAlgorithm *theAlg
-      = new AssemblePNGBoundarySolverAlgorithm(realm_, part, this, fieldName);
-    solverAlgDriver_->solverAlgMap_[algType] = theAlg;
-  }
-  else {
-    its->second->partVec_.push_back(part);
-  }
+
+  register_algorithm<AssemblePNGBoundarySolverAlgorithm>(
+     part, algType, solverAlgDriver_->solverAlgMap_,
+     realm_, part, this, fieldName
+   );
 }
 
 //--------------------------------------------------------------------------
@@ -201,20 +199,12 @@ ProjectedNodalGradientEquationSystem::register_inflow_bc(
 {
 
   const AlgorithmType algType = INFLOW;
-
-  // extract the field name for this bc type
   std::string fieldName = get_name_given_bc(INFLOW_BC);
-  // create lhs/rhs algorithm;
-  std::map<AlgorithmType, SolverAlgorithm *>::iterator its =
-    solverAlgDriver_->solverAlgMap_.find(algType);
-  if ( its == solverAlgDriver_->solverAlgMap_.end() ) {
-    AssemblePNGBoundarySolverAlgorithm *theAlg
-      = new AssemblePNGBoundarySolverAlgorithm(realm_, part, this, fieldName);
-    solverAlgDriver_->solverAlgMap_[algType] = theAlg;
-  }
-  else {
-    its->second->partVec_.push_back(part);
-  }
+
+  register_algorithm<AssemblePNGBoundarySolverAlgorithm>(
+     part, algType, solverAlgDriver_->solverAlgMap_,
+     realm_, part, this, fieldName
+   );
 }
 
 //--------------------------------------------------------------------------
@@ -227,20 +217,12 @@ ProjectedNodalGradientEquationSystem::register_open_bc(
   const OpenBoundaryConditionData &/*openBCData*/)
 {
   const AlgorithmType algType = OPEN;
-
-  // extract the field name for this bc type
   std::string fieldName = get_name_given_bc(OPEN_BC);
-  // create lhs/rhs algorithm;
-  std::map<AlgorithmType, SolverAlgorithm *>::iterator its =
-    solverAlgDriver_->solverAlgMap_.find(algType);
-  if ( its == solverAlgDriver_->solverAlgMap_.end() ) {
-    AssemblePNGBoundarySolverAlgorithm *theAlg
-      = new AssemblePNGBoundarySolverAlgorithm(realm_, part, this, fieldName);
-    solverAlgDriver_->solverAlgMap_[algType] = theAlg;
-  }
-  else {
-    its->second->partVec_.push_back(part);
-  }
+
+  register_algorithm<AssemblePNGBoundarySolverAlgorithm>(
+     part, algType, solverAlgDriver_->solverAlgMap_,
+     realm_, part, this, fieldName
+   );
 }
 
 //--------------------------------------------------------------------------
@@ -254,20 +236,12 @@ ProjectedNodalGradientEquationSystem::register_symmetry_bc(
 {
 
   const AlgorithmType algType = SYMMETRY;
-
-  // extract the field name for this bc type
   std::string fieldName = get_name_given_bc(SYMMETRY_BC);
-  // create lhs/rhs algorithm;
-  std::map<AlgorithmType, SolverAlgorithm *>::iterator its =
-    solverAlgDriver_->solverAlgMap_.find(algType);
-  if ( its == solverAlgDriver_->solverAlgMap_.end() ) {
-    AssemblePNGBoundarySolverAlgorithm *theAlg
-      = new AssemblePNGBoundarySolverAlgorithm(realm_, part, this, fieldName);
-    solverAlgDriver_->solverAlgMap_[algType] = theAlg;
-  }
-  else {
-    its->second->partVec_.push_back(part);
-  }
+
+  register_algorithm<AssemblePNGBoundarySolverAlgorithm>(
+     part, algType, solverAlgDriver_->solverAlgMap_,
+     realm_, part, this, fieldName
+   );
 }
 
 //--------------------------------------------------------------------------
@@ -360,7 +334,7 @@ ProjectedNodalGradientEquationSystem::solve_and_update_external()
       realm_.meta_data(),
       realm_.bulk_data(),
       1.0, *qTmp_,
-      1.0, *dqdx_, 
+      1.0, *dqdx_,
       realm_.get_activate_aura());
     double timeB = stk::cpu_time();
     timerAssemble_ += (timeB-timeA);   

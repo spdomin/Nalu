@@ -134,7 +134,7 @@ ComputeWallFrictionVelocityAlgorithm::execute()
 
     // face master element
     MasterElement *meFC = realm_.get_surface_master_element(b.topology());
-    const int nodesPerFace = meFC->nodesPerElement_;
+    const int nodesPerFace = b.topology().num_nodes();
     const int numScsBip = meFC->numIntPoints_;
 
     // mapping from ip to nodes for this ordinal; face perspective (use with face_node_relations)
@@ -170,8 +170,8 @@ ComputeWallFrictionVelocityAlgorithm::execute()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
-      int num_face_nodes = realm_.num_side_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
+      int num_face_nodes = bulk_data.num_nodes(face);
       // sanity check on num nodes
       ThrowAssert( num_face_nodes == nodesPerFace );
       for ( int ni = 0; ni < num_face_nodes; ++ni ) {
@@ -197,7 +197,7 @@ ComputeWallFrictionVelocityAlgorithm::execute()
       double *wallFrictionVelocityBip = stk::mesh::field_data(*wallFrictionVelocityBip_, face);
 
       // extract the connected element to this exposed face; should be single in size!
-      const stk::mesh::Entity* face_elem_rels = realm_.face_elem_map(face);
+      const stk::mesh::Entity* face_elem_rels = bulk_data.begin_elements(face);
       ThrowAssert( bulk_data.num_elements(face) == 1 );
 
       // get element; its face ordinal number

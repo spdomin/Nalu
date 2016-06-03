@@ -416,11 +416,6 @@ ShearStressTransportEquationSystem::clip_min_distance_to_wall()
 
      // extract master element
      MasterElement *meSCS = realm_.get_surface_master_element(theElemTopo);
-     MasterElement *meFC = realm_.get_surface_master_element(b.topology());
-
-     // face master element
-     const int nodesPerFace = meFC->nodesPerElement_;
-     std::vector<int> face_node_ordinal_vec(nodesPerFace);
 
      const stk::mesh::Bucket::size_type length   = b.size();
 
@@ -428,19 +423,19 @@ ShearStressTransportEquationSystem::clip_min_distance_to_wall()
 
        // get face
        stk::mesh::Entity face = b[k];
-       int num_face_nodes = realm_.num_side_nodes_all(face);
+       int num_face_nodes = bulk_data.num_nodes(face);
 
        // pointer to face data
        const double * areaVec = stk::mesh::field_data(*exposedAreaVec, face);
 
        // extract the connected element to this exposed face; should be single in size!
-       const stk::mesh::Entity* face_elem_rels = realm_.face_elem_map(face);
+       const stk::mesh::Entity* face_elem_rels = bulk_data.begin_elements(face);
        ThrowAssert( bulk_data.num_elements(face) == 1 );
 
-       // get element; its face ordinal number and populate face_node_ordinal_vec
+       // get element; its face ordinal number and populate face_node_ordinals
        stk::mesh::Entity element = face_elem_rels[0];
        const int face_ordinal = bulk_data.begin_element_ordinals(face)[0];
-       realm_.side_node_ordinals_all(theElemTopo,face_ordinal,face_node_ordinal_vec);
+       const int *face_node_ordinals = meSCS->side_node_ordinals(face_ordinal);
 
        // get the relations off of element
        stk::mesh::Entity const * elem_node_rels = bulk_data.begin_nodes(element);
@@ -451,7 +446,7 @@ ShearStressTransportEquationSystem::clip_min_distance_to_wall()
          const int offSetAveraVec = ip*nDim;
 
          const int opposingNode = meSCS->opposingNodes(face_ordinal,ip);
-         const int nearestNode = face_node_ordinal_vec[ip];
+         const int nearestNode = face_node_ordinals[ip];
 
          // left and right nodes; right is on the face; left is the opposing node
          stk::mesh::Entity nodeL = elem_node_rels[opposingNode];

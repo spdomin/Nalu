@@ -105,8 +105,8 @@ SteadyTaylorVortexContinuitySrcElemSuppAlg::elem_execute(
   const int numScvIp = meSCV->numIntPoints_;
   
   // gather
-  stk::mesh::Entity const *  node_rels =  bulkData_->begin_nodes(element);
-  int num_nodes =  bulkData_->num_nodes(element);
+  stk::mesh::Entity const *  node_rels = bulkData_->begin_nodes(element);
+  int num_nodes = bulkData_->num_nodes(element);
   
   // sanity check on num nodes
   ThrowAssert( num_nodes == nodesPerElement );
