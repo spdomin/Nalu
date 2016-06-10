@@ -377,7 +377,7 @@ EpetraLinearSystem::buildFaceElemToNodeGraph(const stk::mesh::PartVector & parts
       const stk::mesh::Entity face = b[k];
 
       // extract the connected element to this exposed face; should be single in size!
-      const stk::mesh::Entity* face_elem_rels = realm_.face_elem_map(face);//face.relations(stk::topology::ELEMENT_RANK);
+      const stk::mesh::Entity* face_elem_rels = bulk_data.begin_elements(face);//face.relations(stk::topology::ELEMENT_RANK);
       ThrowAssert( bulk_data.num_elements(face) == 1 );
 
       // get connected element

@@ -219,9 +219,9 @@ AssemblePNGElemSolverAlgorithm::execute()
           const double r = p_shape_function_scs[offSetSF+ic];
           scalarQIp += r*p_scalarQ[ic];
         }
-      
+
         // add residual for each component i
-        for ( int i = 0; i < nDim; ++i ) {  
+        for ( int i = 0; i < nDim; ++i ) {
           const int indexL = ilNdim + i;
           const int indexR = irNdim + i;
 
@@ -230,7 +230,7 @@ AssemblePNGElemSolverAlgorithm::execute()
           // right hand side; L and R
           const double rhsFac = -scalarQIp*axi;
           p_rhs[indexL] -= rhsFac;
-          p_rhs[indexR] += rhsFac;  
+          p_rhs[indexR] += rhsFac;
         }
       }
 

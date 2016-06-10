@@ -159,7 +159,12 @@ public:
   virtual const double * edgeAlignedArea() {
     throw std::runtime_error("edgeAlignedArea not implement"); }
 
+  virtual const int * side_node_ordinals(int sideOrdinal) {
+    throw std::runtime_error("side_node_ordinals not implemented"); }
+
   double isoparametric_mapping(const double b, const double a, const double xi) const;
+  bool within_tolerance(const double & val, const double & tol);
+  double vector_norm_sq(const double * vect, int len);
 
   int nDim_;
   int nodesPerElement_;
@@ -174,6 +179,9 @@ public:
   std::vector<double> intgLocShift_;
   std::vector<double> intgExpFace_;
   std::vector<double> nodeLoc_;
+  std::vector<int> sideNodeOrdinals_;
+  std::vector<int> sideOffset_;
+
   // extrusion-based scheme
   std::vector<int> faceNodeOnExtrudedElem_;
   std::vector<int> opposingNodeOnExtrudedElem_;
@@ -209,6 +217,7 @@ public:
 
   void shape_fcn(
     double *shpfc);
+
 };
 
 // Hex 8 subcontrol surface
@@ -309,9 +318,9 @@ public:
   const double * edgeAlignedArea();
   
   // helper
-  double vector_norm( const double * vect, int len );
   double parametric_distance(const std::vector<double> &x);
-  bool within_tol( const double & val, const double & tol );
+
+  const int* side_node_ordinals(int sideOrdinal);
 };
 
 class HexahedralP2Element : public MasterElement
@@ -470,6 +479,8 @@ public:
   int opposingFace(
     const int ordinal, const int node);
 
+  const int* side_node_ordinals(int sideOrdinal);
+
 private:
   void set_interior_info();
   void set_boundary_info();
@@ -604,6 +615,8 @@ public:
 
   // helper
   double parametric_distance(const std::vector<double> &x);
+
+  const int* side_node_ordinals(int sideOrdinal);
 };
 
 // Pyramid 5 subcontrol volume
@@ -679,6 +692,8 @@ public:
 
   int opposingNodes(
     const int ordinal, const int node);
+
+  const int* side_node_ordinals(int sideOrdinal);
 };
 
 // Wedge 6 subcontrol volume
@@ -778,10 +793,10 @@ public:
     double* shape_fcn);
 
   // helper functions to isInElement
-  bool within_tolerance( const double & val, const double & tol );
-  double vector_norm_sq( const double *theVector );
   double parametric_distance( const double X, const double Y);
   double parametric_distance( const std::vector<double> &x);
+
+  const int* side_node_ordinals(int sideOrdinal);
 };
 
 // 2D Quad 4 subcontrol volume
@@ -911,6 +926,8 @@ public:
   const int * faceScsIpOnExtrudedElem();
   const int * faceScsIpOnFaceEdges();
   const double * edgeAlignedArea();
+
+  const int* side_node_ordinals(int sideOrdinal);
 };
 
 class QuadrilateralP2Element : public MasterElement
@@ -1065,6 +1082,8 @@ public:
   int opposingFace(
     const int ordinal, const int node);
 
+  const int* side_node_ordinals(int sideOrdinal);
+
 private:
   void set_interior_info();
   void set_boundary_info();
@@ -1188,6 +1207,8 @@ public:
     const double *side_pcoords,
     double *elem_pcoords);
 
+  const int* side_node_ordinals(int sideOrdinal);
+
 };
 
 // 3D Quad 4
@@ -1228,10 +1249,6 @@ public:
     const double *isoParCoord,
     double *shpfc);
 
-  bool within_tol( const double & val, const double & tol );
-  
-  double vector_norm2( const double * vect, int len );
-
   void non_unit_face_normal(
     const double * par_coord,
     const double * elem_nodal_coor,
@@ -1257,6 +1274,17 @@ public:
     double *areav,
     double * error );
 
+  double isInElement(
+    const double *elemNodalCoord,
+    const double *pointCoord,
+    double *isoParCoord);
+
+  void interpolatePoint(
+    const int &nComp,
+    const double *isoParCoord,
+    const double *field,
+    double *result);
+
 private:
   void set_interior_info();
   void eval_shape_functions_at_ips() final;
@@ -1281,6 +1309,13 @@ private:
     const double *par_coord,
     double* shape_fcn
   ) const;
+
+  void non_unit_face_normal(
+    const double *isoParCoord,
+    const double *elemNodalCoord,
+    double *normalVector);
+
+  double parametric_distance(const std::vector<double> &x);
 
   std::vector<double> ipWeight_;
   const int surfaceDimension_;

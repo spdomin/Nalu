@@ -566,7 +566,7 @@ TpetraLinearSystem::buildFaceElemToNodeGraph(const stk::mesh::PartVector & parts
       const stk::mesh::Entity face = b[k];
 
       // extract the connected element to this exposed face; should be single in size!
-      const stk::mesh::Entity* face_elem_rels = realm_.face_elem_map(face);
+      const stk::mesh::Entity* face_elem_rels = bulkData.begin_elements(face);
       ThrowAssert( bulkData.num_elements(face) == 1 );
 
       // get connected element and nodal relations
@@ -790,13 +790,17 @@ TpetraLinearSystem::finalizeLinearSystem()
   const int this_mpi_rank = bulkData.parallel_rank();
   (void)this_mpi_rank;
 
+  ConnectionVec connectionVec(connectionSet_.begin(), connectionSet_.end());
+  connectionSet_.clear();
+  std::sort(connectionVec.begin(), connectionVec.end());
+
   std::vector<GlobalOrdinal> globalDofs_a(numDof_);
   std::vector<GlobalOrdinal> globalDofs_b(numDof_);
   std::ostringstream out2;
-
-  for (const auto& connection : connectionSet_) {
-    const stk::mesh::Entity entity_a = connection.first;
-    const stk::mesh::Entity entity_b = connection.second;
+  const size_t numConnections = connectionVec.size();
+  for (size_t i=0; i < numConnections; ++i) {
+    const stk::mesh::Entity entity_a = connectionVec[i].first;
+    const stk::mesh::Entity entity_b = connectionVec[i].second;
 
     const stk::mesh::EntityId entityId_a = *stk::mesh::field_data(*realm_.naluGlobalId_, entity_a);
     const stk::mesh::EntityId entityId_b = *stk::mesh::field_data(*realm_.naluGlobalId_, entity_b);
@@ -849,9 +853,9 @@ TpetraLinearSystem::finalizeLinearSystem()
   ownedGraph_ = Teuchos::rcp(new LinSys::Graph(ownedRowsMap_, totalColsMap_, 8));
 
   // Insert all the local connection data
-  for (const auto& connection : connectionSet_) {
-    const stk::mesh::Entity entity_a = connection.first;
-    const stk::mesh::Entity entity_b = connection.second;
+  for (size_t i=0; i < numConnections; ++i) {
+    const stk::mesh::Entity entity_a = connectionVec[i].first;
+    const stk::mesh::Entity entity_b = connectionVec[i].second;
 
     const stk::mesh::EntityId entityId_a = *stk::mesh::field_data(*realm_.naluGlobalId_, entity_a);
     const stk::mesh::EntityId entityId_b = *stk::mesh::field_data(*realm_.naluGlobalId_, entity_b);
@@ -880,7 +884,6 @@ TpetraLinearSystem::finalizeLinearSystem()
       }
     }
   }
-  connectionSet_.clear();
 
   // add imported graph information
   {

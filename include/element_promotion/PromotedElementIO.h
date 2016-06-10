@@ -1,3 +1,9 @@
+/*------------------------------------------------------------------------*/
+/*  Copyright 2014 Sandia Corporation.                                    */
+/*  This software is released under the license detailed                  */
+/*  in the file, LICENSE, which is located in the top-level nalu      */
+/*  directory structure                                                   */
+/*------------------------------------------------------------------------*/
 #ifndef PromotedElementIO_h
 #define PromotedElementIO_h
 
@@ -61,9 +67,16 @@ public:
 
   virtual ~PromotedElementIO() = default;
 
-  void output_results(const std::vector<const stk::mesh::FieldBase*> fields) const;
-
+  void add_fields(const std::vector<stk::mesh::FieldBase*>& fields);
   void write_database_data(double currentTime);
+
+  bool has_field(const std::string field_name)
+  {
+    return (fields_.find(field_name) != fields_.end());
+  }
+
+private:
+  void output_results(const std::vector<const stk::mesh::FieldBase*> fields) const;
 
   void write_element_connectivity(
     const stk::mesh::PartVector& baseParts,
@@ -79,15 +92,13 @@ public:
   void write_sideset_definitions(const stk::mesh::PartVector& baseParts);
   void write_coordinate_list(const stk::mesh::PartVector& superElemParts);
 
-  void add_fields(const std::vector<stk::mesh::FieldBase*>& fields);
   int maximum_field_length(const stk::mesh::FieldBase& field) const;
 
   template<typename T> void
   put_data_on_node_block(
     Ioss::NodeBlock& nodeBlock,
     const stk::mesh::FieldBase& field,
-    const stk::mesh::BucketVector& buckets,
-    size_t numNodes) const;
+    const stk::mesh::BucketVector& buckets) const;
 
   std::string storage_name(const stk::mesh::FieldBase& field) const;
 
@@ -98,30 +109,15 @@ public:
   const std::string& fileName_;
   const stk::mesh::FieldBase* coordinates_;
   const unsigned nDim_;
+  stk::mesh::PartVector superElemParts_;
 
-  struct FieldNameHash {
-    std::size_t operator()(const stk::mesh::FieldBase* const  field) const  {
-      return std::hash<std::string>()(field->name());
-    }
-  };
-
-  struct FieldNameEqual {
-    bool operator()(const stk::mesh::FieldBase* fieldA, const stk::mesh::FieldBase* fieldB) const {
-      return (fieldA->name() == fieldB->name());
-    }
-  };
-  std::unordered_set<const stk::mesh::FieldBase*, FieldNameHash, FieldNameEqual> fields_;
-
+  std::map<const std::string, const stk::mesh::FieldBase*> fields_;
   std::map<const stk::mesh::Part*, Ioss::ElementBlock*> elementBlockPointers_;
   std::map<const stk::mesh::Part*, Ioss::SideBlock*> sideBlockPointers_;
   Ioss::NodeBlock* nodeBlock_;
 
   std::unique_ptr<Ioss::Region> output_;
   Ioss::DatabaseIO* databaseIO;
-
-  // fields
-
-
 };
 
 } // namespace nalu

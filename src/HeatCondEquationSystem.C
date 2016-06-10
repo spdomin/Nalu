@@ -350,15 +350,16 @@ HeatCondEquationSystem::register_interior_algorithm(
         std::string sourceName = mapNameVec[k];
         if (sourceName == "steady_2d_thermal" ) {
           SteadyThermalContactSrcNodeSuppAlg *theSrc
-            = new SteadyThermalContactSrcNodeSuppAlg(realm_);
+          = new SteadyThermalContactSrcNodeSuppAlg(realm_);
           theAlg->supplementalAlg_.push_back(theSrc);
-        } else if (sourceName == "steady_3d_thermal" ) {
+        }
+        else if (sourceName == "steady_3d_thermal" ) {
           SteadyThermalContact3DSrcNodeSuppAlg *theSrc
-            = new SteadyThermalContact3DSrcNodeSuppAlg(realm_);
+          = new SteadyThermalContact3DSrcNodeSuppAlg(realm_);
           theAlg->supplementalAlg_.push_back(theSrc);
         }
         else {
-          throw std::runtime_error("HeatCondEquationSystem::only steady_2d_thermal/steady_3d_thermal src term is supported");
+          throw std::runtime_error("HeatCondNodalSrcTerms::Error Source term is not supported: " + sourceName);
         }
       }
     }
@@ -386,15 +387,16 @@ HeatCondEquationSystem::register_interior_algorithm(
         std::string sourceName = mapNameVec[k];
         if (sourceName == "steady_2d_thermal" ) {
           SteadyThermalContactSrcElemSuppAlg *theSrc
-            = new SteadyThermalContactSrcElemSuppAlg(realm_);
+          = new SteadyThermalContactSrcElemSuppAlg(realm_);
           theAlg->supplementalAlg_.push_back(theSrc);
-        } else if (sourceName == "steady_3d_thermal" ) {
+        }
+        else if (sourceName == "steady_3d_thermal" ) {
           SteadyThermalContact3DSrcElemSuppAlg *theSrc
-            = new SteadyThermalContact3DSrcElemSuppAlg(realm_);
+          = new SteadyThermalContact3DSrcElemSuppAlg(realm_);
           theAlg->supplementalAlg_.push_back(theSrc);
         }
         else {
-          throw std::runtime_error("HeatCondEquationSystem::only steady_2d_thermal/steady_3d_thermal element src term is supported");
+          throw std::runtime_error("HeatCondElemSrcTerms::Error Source term is not supported: " + sourceName);
         }
       }
     }
@@ -488,7 +490,8 @@ HeatCondEquationSystem::register_wall_bc(
       // switch on the name found...
       if ( fcnName == "steady_2d_thermal" ) {
         theAuxFunc = new SteadyThermalContactAuxFunction();
-      } else if ( fcnName == "steady_3d_thermal" ) {
+      }
+      else if ( fcnName == "steady_3d_thermal" ) {
         theAuxFunc = new SteadyThermalContact3DAuxFunction();
       }
       else {
@@ -1009,8 +1012,8 @@ HeatCondEquationSystem::register_initial_condition_fcn(
     if ( fcnName == "steady_2d_thermal" ) {
       // create the function
       theAuxFunc = new SteadyThermalContactAuxFunction();      
-    } else if ( fcnName == "steady_3d_thermal" ) {
-      // create the function
+    }
+    else if ( fcnName == "steady_3d_thermal" ) {
       theAuxFunc = new SteadyThermalContact3DAuxFunction();
     }
     else {

@@ -1,3 +1,10 @@
+/*------------------------------------------------------------------------*/
+/*  Copyright 2014 Sandia Corporation.                                    */
+/*  This software is released under the license detailed                  */
+/*  in the file, LICENSE, which is located in the top-level nalu      */
+/*  directory structure                                                   */
+/*------------------------------------------------------------------------*/
+
 #include <element_promotion/QuadratureKernels.h>
 
 #include <element_promotion/ElementDescription.h>
@@ -22,19 +29,27 @@ namespace nalu {
 SGLQuadratureOps::SGLQuadratureOps(const ElementDescription& elem)
 : blas_(Teuchos::BLAS<int,double>())
 {
-  std::tie(std::ignore, weightTensor_) =  SGL_quadrature_rule(elem.nodes1D, elem.quadrature->scsEndLoc());
-  weightMatrix_.resize(elem.nodesPerElement*elem.nodesPerElement);
-  work2D_.resize(elem.nodes1D*elem.nodes1D);
 
   nodes1D_ = elem.nodes1D;
   nodesPerElement_ = elem.nodesPerElement;
+  numSurfaces_ = elem.dimension * elem.polyOrder;
+  nodesPerFace_ = elem.nodesPerFace;
 
+  std::tie(std::ignore, weightTensor_) = SGL_quadrature_rule(elem.nodes1D, elem.quadrature->scsEndLoc());
   p_weightTensor_ = weightTensor_.data();
+
+  work2D_.resize(elem.nodes1D*elem.nodes1D);
   p_work2D_ = work2D_.data();
 
   // For 3D volume integrals, the weights are saved to a large N^3 x N^3 matrix
   // where N is the number of nodes in 1D
   if (elem.dimension == 3) {
+    size3D_ = numSurfaces_*nodes1D_*nodes1D_;
+
+    // forms a (re)mapped weight matrix from the weights in the summation
+    // The mapping means that the result of the integration is ordered like
+    // the nodes in the element itself (whatever that may be)
+    weightMatrix_.resize(elem.nodesPerElement*elem.nodesPerElement);
     for (unsigned q = 0; q < elem.nodesPerElement; ++q) {
       const auto& lmn = elem.inverseNodeMap[q];
       for (unsigned p = 0; p < elem.nodesPerElement; ++p) {
@@ -95,8 +110,6 @@ SGLQuadratureOps::volume_3D(
    * TODO(rcknaus):
    * This can be computed with fewer flops by using a sequence of smaller
    * matrix-matrix multiplications.  For now, just do a big matvec.
-   * This approach might be better with thread-level parallelism despite
-   * the increased operation count
    */
 
   blas_.GEMV(
@@ -132,8 +145,8 @@ void SGLQuadratureOps::surface_2D(
 //--------------------------------------------------------------------------
 void
 SGLQuadratureOps::surface_3D(
-  const double* __restrict__ integrand,
-  double* __restrict__ result,
+  const double* integrand,
+  double* result,
   int face_offset)
 {
   /* Computes a surface integral for each of the N*N cv surfaces along a subcontrol plane
@@ -165,6 +178,52 @@ SGLQuadratureOps::surface_3D(
     0.0,
     result + face_offset, nodes1D_
   );
+}
+//--------------------------------------------------------------------------
+void SGLQuadratureOps::surfaces_2D(const double* integrand, double* result)
+{
+  // Computes all surfaces integrals for a 2D Quad element
+
+  blas_.GEMM(
+    Teuchos::TRANS,
+    Teuchos::NO_TRANS,
+    nodes1D_, numSurfaces_, nodes1D_,
+    1.0,
+    p_weightTensor_, nodes1D_,
+    integrand, nodes1D_,
+    0.0,
+    result, nodes1D_
+  );
+}
+//--------------------------------------------------------------------------
+void SGLQuadratureOps::surfaces_3D(const double* integrand, double* result)
+{
+  // Computes all surface integrals for a 3D Hex element
+  // TODO(rcknaus): optimization
+
+  for (int face_offset = 0; face_offset < size3D_; face_offset += nodesPerFace_) {
+    blas_.GEMM(
+      Teuchos::NO_TRANS,
+      Teuchos::NO_TRANS,
+      nodes1D_, nodes1D_, nodes1D_,
+      1.0,
+      integrand + face_offset, nodes1D_,
+      p_weightTensor_, nodes1D_,
+      0.0,
+      p_work2D_, nodes1D_
+    );
+
+    blas_.GEMM(
+      Teuchos::TRANS,
+      Teuchos::NO_TRANS,
+      nodes1D_, nodes1D_, nodes1D_,
+      1.0,
+      p_weightTensor_, nodes1D_,
+      p_work2D_, nodes1D_,
+      0.0,
+      result + face_offset, nodes1D_
+    );
+  }
 }
 
 } // namespace nalu

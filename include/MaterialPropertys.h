@@ -44,8 +44,6 @@ public:
   
   void breadboard(){};
   
-  void switch_to_super_element_target_names();
-
   // ease of access methods to particular initial condition
   size_t size() {return materialPropertyVector_.size();}
   MaterialProperty *operator[](int i) { return materialPropertyVector_[i];}

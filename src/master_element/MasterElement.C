@@ -57,6 +57,28 @@ MasterElement::isoparametric_mapping(
 }
 
 //--------------------------------------------------------------------------
+//-------- within_tolerance ------------------------------------------------
+//--------------------------------------------------------------------------
+bool 
+MasterElement::within_tolerance( const double & val, const double & tol )
+{
+  return (std::abs(val)<tol);
+}
+
+//--------------------------------------------------------------------------
+//-------- vector_norm_sq --------------------------------------------------
+//--------------------------------------------------------------------------
+double 
+MasterElement::vector_norm_sq( const double * vect, int len )
+{
+  double norm_sq = 0.0;
+  for (int i=0; i<len; i++) {
+    norm_sq += vect[i]*vect[i];
+  }
+  return norm_sq;
+}
+
+//--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
 HexSCV::HexSCV()
@@ -309,6 +331,16 @@ HexSCS::HexSCS()
   // node 7
   nodeLoc_[21] = -0.5; nodeLoc_[22] =  0.5; nodeLoc_[23] =  0.5;
 
+  // mapping from a side ordinal to the node ordinals on that side
+  sideNodeOrdinals_ = {
+      0, 1, 5, 4, // ordinal 0
+      1, 2, 6, 5, // ordinal 1
+      2, 3, 7, 6, // ordinal 2
+      0, 4, 7, 3, // ordinal 3
+      0, 3, 2, 1, // ordinal 4
+      4, 5, 6, 7  // ordinal 5
+  };
+
   // mapping between exposed face and extruded element's overlapping face   
   faceNodeOnExtrudedElem_.resize(24);
   faceNodeOnExtrudedElem_[0]  = 1; faceNodeOnExtrudedElem_[1]  = 0; faceNodeOnExtrudedElem_[2]  = 4; faceNodeOnExtrudedElem_[3]  = 5;
@@ -372,6 +404,17 @@ HexSCS::ipNodeMap(
 {
   // define ip->node mappings for each face (ordinal); 
   return &ipNodeMap_[ordinal*4];
+}
+
+//--------------------------------------------------------------------------
+//-------- side_node_ordinals ----------------------------------------------
+//--------------------------------------------------------------------------
+const int *
+HexSCS::side_node_ordinals(
+  int ordinal)
+{
+  // define face_ordinal->node_ordinal mappings for each face (ordinal);
+  return &sideNodeOrdinals_[ordinal*4];
 }
 
 //--------------------------------------------------------------------------
@@ -749,7 +792,7 @@ HexSCS::isInElement(
     zetacur = zetanew;
 
   }
-  while ( !within_tol( vector_norm(xidiff,3), isInElemConverged) && ++i < maxNonlinearIter);
+  while ( !within_tolerance( vector_norm_sq(xidiff,3), isInElemConverged) && ++i < maxNonlinearIter);
 
   par_coor[0] = par_coor[1] = par_coor[2] = std::numeric_limits<double>::max();
   double dist = std::numeric_limits<double>::max();
@@ -986,19 +1029,6 @@ HexSCS::edgeAlignedArea()
 }
 
 //--------------------------------------------------------------------------
-//-------- vector_norm -----------------------------------------------------
-//--------------------------------------------------------------------------
-double HexSCS::vector_norm( const double * vect, int len )
-{
-  double norm_sq = 0.0;
-  for (int i=0; i<len; i++)
-  {
-    norm_sq += vect[i]*vect[i];
-  }
-  return norm_sq;
-}
-
-//--------------------------------------------------------------------------
 //-------- parametric_distance ---------------------------------------------
 //--------------------------------------------------------------------------
 double HexSCS::parametric_distance(const std::vector<double> &x)
@@ -1015,13 +1045,6 @@ double HexSCS::parametric_distance(const std::vector<double> &x)
     }
   }
   return d;
-}
-//--------------------------------------------------------------------------
-//-------- within_tol ------------------------------------------------------
-//--------------------------------------------------------------------------
-bool HexSCS::within_tol( const double & val, const double & tol )
-{
-  return (std::abs(val)<tol);
 }
 
 //--------------------------------------------------------------------------
@@ -1049,6 +1072,15 @@ HexahedralP2Element::HexahedralP2Element()
                   19, 22, 17, // top mid-front edge
                    7, 18,  6  // top back edge
                 };
+
+  sideNodeOrdinals_ = {
+       0, 1, 5, 4, 8,13,16,12,25, //ordinal 0
+       1, 2, 6, 5, 9,14,17,13,24, //ordinal 1
+       2, 3, 7, 6,10,15,18,14,26, //ordinal 2
+       0, 4, 7, 3,12,19,15,11,23, //ordinal 3
+       0, 3, 2, 1,11,10, 9, 8,21, //ordinal 4
+       4, 5, 6, 7,16,17,18,19,22  //ordinal 5
+  };
 
   // a padded list of the scs locations
   scsEndLoc_ = { -1.0, -scsDist_, scsDist_, 1.0 };
@@ -2212,6 +2244,17 @@ Hex27SCS::ipNodeMap(
 }
 
 //--------------------------------------------------------------------------
+//-------- side_node_ordinals ----------------------------------------------
+//--------------------------------------------------------------------------
+const int *
+Hex27SCS::side_node_ordinals(
+  int ordinal)
+{
+  // define face_ordinal->node_ordinal mappings for each face (ordinal);
+  return &sideNodeOrdinals_[ordinal*9];
+}
+
+//--------------------------------------------------------------------------
 //-------- opposingNodes --------------------------------------------------
 //--------------------------------------------------------------------------
 int
@@ -2670,6 +2713,14 @@ TetSCS::TetSCS()
   ipNodeMap_[6] = 0;  ipNodeMap_[7] = 3;  ipNodeMap_[8] = 2;  
   // face 3;
   ipNodeMap_[9] = 0; ipNodeMap_[10] = 2; ipNodeMap_[11] = 1;
+
+
+  sideNodeOrdinals_ = {
+      0, 1, 3, //ordinal 0
+      1, 2, 3, //ordinal 1
+      0, 3, 2, //ordinal 2
+      0, 2, 1  //ordinal 3
+  };
 }
 
 //--------------------------------------------------------------------------
@@ -2689,6 +2740,17 @@ TetSCS::ipNodeMap(
 {
   // define ip->node mappings for each face (ordinal); 
   return &ipNodeMap_[ordinal*3];
+}
+
+//--------------------------------------------------------------------------
+//-------- side_node_ordinals ----------------------------------------------
+//--------------------------------------------------------------------------
+const int *
+TetSCS::side_node_ordinals(
+  int ordinal)
+{
+  // define face_ordinal->node_ordinal mappings for each face (ordinal);
+  return &sideNodeOrdinals_[ordinal*3];
 }
 
 //--------------------------------------------------------------------------
@@ -3217,6 +3279,13 @@ PyrSCS::PyrSCS()
   intgLocShift_[21] = -0.50; intgLocShift_[22] =  0.50; intgLocShift_[23] =  0.50; // surf 8    4->5
 
   // exposed face; n/a
+  sideNodeOrdinals_ = {
+      0, 1, 4,    // ordinal 0
+      1, 2, 4,    // ordinal 1
+      2, 3, 4,    // ordinal 2
+      3, 0, 4,    // ordinal 3
+      0, 3, 2, 1  // ordinal 4
+  };
 }
 
 //--------------------------------------------------------------------------
@@ -3225,6 +3294,17 @@ PyrSCS::PyrSCS()
 PyrSCS::~PyrSCS()
 {
   // does nothing
+}
+
+//--------------------------------------------------------------------------
+//-------- side_node_ordinals ----------------------------------------------
+//--------------------------------------------------------------------------
+const int *
+PyrSCS::side_node_ordinals(
+  int ordinal)
+{
+  // define face_ordinal->node_ordinal mappings for each face (ordinal);
+  return &sideNodeOrdinals_[ordinal*3];
 }
 
 //--------------------------------------------------------------------------
@@ -3577,6 +3657,18 @@ WedSCS::WedSCS()
   ipNodeMap_[12] = 0; ipNodeMap_[13] = 1; ipNodeMap_[14] = 1; ipNodeMap_[15] = 0; //empty 
   // face 4;
   ipNodeMap_[16] = 3; ipNodeMap_[17] = 4; ipNodeMap_[18] = 5; ipNodeMap_[19] = 0; // empty 
+
+
+  sideNodeOrdinals_ = {
+      0, 1, 4, 3, // ordinal 0
+      1, 2, 5, 4, // ordinal 1
+      0, 3, 5, 2, // ordinal 2
+      0, 2, 1,    // ordinal 3
+      3, 4, 5     // ordinal 4
+  };
+
+  // ordinal to vector offset map.  Really only convenient for the wedge.
+  sideOffset_ = { 0, 4, 8, 12, 15};
 }
 
 //--------------------------------------------------------------------------
@@ -3596,6 +3688,17 @@ WedSCS::ipNodeMap(
 {
   // define ip->node mappings for each face (ordinal); 
   return &ipNodeMap_[ordinal*4];
+}
+
+//--------------------------------------------------------------------------
+//-------- side_node_ordinals ----------------------------------------------
+//--------------------------------------------------------------------------
+const int *
+WedSCS::side_node_ordinals(
+  int ordinal)
+{
+  // define face_ordinal->node_ordinal mappings for each face (ordinal);
+  return &sideNodeOrdinals_[sideOffset_[ordinal]];
 }
 
 //--------------------------------------------------------------------------
@@ -3965,7 +4068,7 @@ WedSCS::isInElement(
     xidiff[1] = snew  - scur;
     xidiff[2] = xinew - xicur;
   }
-  while (!within_tolerance(vector_norm_sq(xidiff), isInElemConverged) && ++i != MAX_NR_ITER);
+  while (!within_tolerance(vector_norm_sq(xidiff,3), isInElemConverged) && ++i != MAX_NR_ITER);
 
   isoParCoord[0] = isoParCoord[1] = isoParCoord[2] = std::numeric_limits<double>::max();
   double dist = std::numeric_limits<double>::max();
@@ -4032,26 +4135,6 @@ WedSCS::wedge_shape_fcn(
     shape_fcn[4 + sixj] = 0.5 * r * (1.0 + xi);
     shape_fcn[5 + sixj] = 0.5 * s * (1.0 + xi);
   }
-}
-
-//--------------------------------------------------------------------------
-//-------- within_tolerance ------------------------------------------------
-//--------------------------------------------------------------------------
-bool 
-WedSCS::within_tolerance( const double & val, const double & tol )
-{
-  return (std::abs(val)<tol);
-}
-
-//--------------------------------------------------------------------------
-//-------- vector_norm_sq --------------------------------------------------
-//--------------------------------------------------------------------------
-double
-WedSCS::vector_norm_sq( const double *theVector)
-{
-  return (theVector[0] * theVector[0] +
-	  theVector[1] * theVector[1] +
-	  theVector[2] * theVector[2]);
 }
 
 //--------------------------------------------------------------------------
@@ -4296,6 +4379,12 @@ Quad2DSCS::Quad2DSCS()
   edgeAlignedArea_[0] = -1.0; edgeAlignedArea_[1] = -1.0;
   edgeAlignedArea_[2] = -1.0; edgeAlignedArea_[3] = -1.0;
 
+  sideNodeOrdinals_ = {
+      0, 1,
+      1, 2,
+      2, 3,
+      3, 0
+  };
 }
 
 //--------------------------------------------------------------------------
@@ -4315,6 +4404,18 @@ Quad2DSCS::ipNodeMap(
 {
   // define ip->node mappings for each face (ordinal); 
   return &ipNodeMap_[ordinal*2];
+}
+
+
+//--------------------------------------------------------------------------
+//-------- side_node_ordinals ----------------------------------------------
+//--------------------------------------------------------------------------
+const int *
+Quad2DSCS::side_node_ordinals(
+  int ordinal)
+{
+  // define face_ordinal->node_ordinal mappings for each face (ordinal);
+  return &sideNodeOrdinals_[ordinal*2];
 }
 
 //--------------------------------------------------------------------------
@@ -4814,6 +4915,13 @@ QuadrilateralP2Element::QuadrilateralP2Element()
                   7, 8, 5, // middle row of nodes
                   3, 6, 2  // top row of nodes
                 };
+
+  sideNodeOrdinals_ = {
+      0, 1, 4,
+      1, 2, 5,
+      2, 3, 6,
+      3, 0, 7
+  };
 
   // a padded list of scs locations
   scsEndLoc_ = { -1.0, -scsDist_, scsDist_, +1.0 };
@@ -5590,6 +5698,17 @@ Quad92DSCS::ipNodeMap(
 }
 
 //--------------------------------------------------------------------------
+//-------- side_node_ordinals ----------------------------------------------
+//--------------------------------------------------------------------------
+const int *
+Quad92DSCS::side_node_ordinals(
+  int ordinal)
+{
+  // define face_ordinal->node_ordinal mappings for each face (ordinal);
+  return &sideNodeOrdinals_[ordinal*3];
+}
+
+//--------------------------------------------------------------------------
 //-------- determinant -----------------------------------------------------
 //--------------------------------------------------------------------------
 void
@@ -5930,6 +6049,13 @@ Tri2DSCS::Tri2DSCS()
   ipNodeMap_[2] = 1;  ipNodeMap_[3] = 2; 
   // face 2;
   ipNodeMap_[4] = 2;  ipNodeMap_[5] = 0;  
+
+
+  sideNodeOrdinals_ = {
+      0, 1,  // ordinal 0
+      1, 2,  // ordinal 1
+      2, 0   // ordinal 2
+  };
 }
 
 //--------------------------------------------------------------------------
@@ -5949,6 +6075,17 @@ Tri2DSCS::ipNodeMap(
 {
   // define ip->node mappings for each face (ordinal); 
   return &ipNodeMap_[ordinal*2];
+}
+
+//--------------------------------------------------------------------------
+//-------- side_node_ordinals ----------------------------------------------
+//--------------------------------------------------------------------------
+const int *
+Tri2DSCS::side_node_ordinals(
+  int ordinal)
+{
+  // define face_ordinal->node_ordinal mappings for each face (ordinal);
+  return &sideNodeOrdinals_[ordinal*2];
 }
 
 //--------------------------------------------------------------------------
@@ -6551,7 +6688,7 @@ Quad3DSCS::isInElement(
     deltasol[2] = (gn[2]*(j[1]*j[3]-j[0]*j[4])+gn[1]*(-(j[1]*j[6])+
 		  j[0]*j[7])+gn[0]*(j[4]*j[6]-j[3]*j[7]))/jdet;
 
-  } while ( !within_tol( vector_norm2(deltasol,3), isInElemConverged)
+  } while ( !within_tolerance( vector_norm_sq(deltasol,3), isInElemConverged)
 	    && ++i < maxNonlinearIter );
 
   // Fill in solution vector; only include the distance (in the third
@@ -6568,7 +6705,7 @@ Quad3DSCS::isInElement(
     isoParCoord[1] = solcur[1] + deltasol[1];
     // Rescale the distance vector by the length of the (non-unit) normal vector,
     // which was used above in the NR iteration.
-    const double area   = std::sqrt(vector_norm2(normal,3));
+    const double area   = std::sqrt(vector_norm_sq(normal,3));
     const double length = std::sqrt(area);
     
     const double par_coor_2 = (solcur[2] + deltasol[2]) * length;
@@ -6584,23 +6721,6 @@ Quad3DSCS::isInElement(
   return dist;
 }
 
-bool 
-Quad3DSCS::within_tol( const double & val, const double & tol )
-{
-  return (std::abs(val)<tol);
-}
-
-double 
-Quad3DSCS::vector_norm2( const double * vect, int len )
-{
-  double norm_sq = 0.0;
-  for (int i=0; i<len; i++)
-  {
-    norm_sq += vect[i]*vect[i];
-  }
-  return norm_sq;
-}
-
 void
 Quad3DSCS::non_unit_face_normal(
   const double * isoParCoord,            // (2)
@@ -6613,17 +6733,17 @@ Quad3DSCS::non_unit_face_normal(
   // Translate element so that node 0 is at (x,y,z) = (0,0,0)
 
   double x[3] = { elem_nodal_coor[1] - elem_nodal_coor[0],
-		elem_nodal_coor[2] - elem_nodal_coor[0],
-		elem_nodal_coor[3] - elem_nodal_coor[0] };
-
+                  elem_nodal_coor[2] - elem_nodal_coor[0],
+                  elem_nodal_coor[3] - elem_nodal_coor[0] };
+  
   double y[3] = { elem_nodal_coor[5] - elem_nodal_coor[4],
-		elem_nodal_coor[6] - elem_nodal_coor[4],
-		elem_nodal_coor[7] - elem_nodal_coor[4] };
-
+                  elem_nodal_coor[6] - elem_nodal_coor[4],
+                  elem_nodal_coor[7] - elem_nodal_coor[4] };
+  
   double z[3] = { elem_nodal_coor[9]  - elem_nodal_coor[8],
-		elem_nodal_coor[10] - elem_nodal_coor[8],
-		elem_nodal_coor[11] - elem_nodal_coor[8] };
-
+                  elem_nodal_coor[10] - elem_nodal_coor[8],
+                  elem_nodal_coor[11] - elem_nodal_coor[8] };
+  
   // Mathematica-generated and simplified code for the normal vector
 
   double n0 = 0.125*(xi*y[2]*z[0]+y[0]*z[1]+xi*y[0]*z[1]-y[2]*z[1]-
@@ -6971,6 +7091,234 @@ Quad93DSCS::determinant(
       }
     }
   }
+}
+
+//--------------------------------------------------------------------------
+//-------- isInElement -----------------------------------------------------
+//--------------------------------------------------------------------------
+double
+Quad93DSCS::isInElement(
+  const double *elemNodalCoord,
+  const double *pointCoord,
+  double *isoParCoord )
+{
+  const double isInElemConverged = 1.0e-16;
+  // Translate element so that (x,y,z) coordinates of the first node are (0,0,0)
+
+  double x[3] = { elemNodalCoord[1] - elemNodalCoord[0],
+                  elemNodalCoord[2] - elemNodalCoord[0],
+                  elemNodalCoord[3] - elemNodalCoord[0] };
+  
+  double y[3] = { elemNodalCoord[10] - elemNodalCoord[9],
+                  elemNodalCoord[11] - elemNodalCoord[9],
+                  elemNodalCoord[12] - elemNodalCoord[9] };
+  
+  double z[3] = { elemNodalCoord[19] - elemNodalCoord[18],
+                  elemNodalCoord[20] - elemNodalCoord[18],
+                  elemNodalCoord[21] - elemNodalCoord[18] };
+  
+  // (xp,yp,zp) is the point at which we're searching for (xi,eta,d)
+  // (must translate this also)
+  // d = (scaled) distance in (x,y,z) space from point (xp,yp,zp) to the
+  //     surface defined by the face element (the distance is scaled by
+  //     the length of the non-unit normal vector; rescaling of d is done
+  //     following the NR iteration below).
+
+  double xp = pointCoord[0] - elemNodalCoord[0];
+  double yp = pointCoord[1] - elemNodalCoord[9];
+  double zp = pointCoord[2] - elemNodalCoord[18];
+
+  // Newton-Raphson iteration for (xi,eta,d)
+
+  double jdet;
+  double j[9];
+  double gn[3];
+  double xcur[3];          // current (x,y,z) point on element surface
+  double normal[3];        // (non-unit) normal computed at xcur
+
+  // Solution vector solcur[3] = {xi,eta,d}
+  double solcur[3] = {-0.5,-0.5,-0.5};     // initial guess
+  double deltasol[] = {1.0,1.0, 1.0};
+
+  unsigned i = 0;
+  const unsigned MAX_NR_ITER = 100;
+
+  do
+  {
+    // Update guess vector
+    solcur[0] += deltasol[0];
+    solcur[1] += deltasol[1];
+    solcur[2] += deltasol[2];
+
+    interpolatePoint(3,solcur,elemNodalCoord,xcur);
+
+    // Translate xcur ((x,y,z) point corresponding
+    // to current (xi,eta) guess)
+
+    xcur[0] -= elemNodalCoord[0];
+    xcur[1] -= elemNodalCoord[9];
+    xcur[2] -= elemNodalCoord[18];
+
+    non_unit_face_normal(solcur,elemNodalCoord,normal);
+
+    gn[0] = xcur[0] - xp + solcur[2] * normal[0];
+    gn[1] = xcur[1] - yp + solcur[2] * normal[1];
+    gn[2] = xcur[2] - zp + solcur[2] * normal[2];
+
+    // Mathematica-generated code for the jacobian
+
+    j[0]=0.125000000000000*(-2.00000000000000*(-1.00000000000000+solcur[1])*x[0]+(2.00000000000000*(1.00000000000000+solcur[1])*(x[1]-x[2])+solcur[2]*(-(y[1]*z[0])+y[2]*z[0]+y[0]*z[1]-y[0]*z[2])));
+    
+    j[1]=0.125000000000000*(-2.00000000000000*(1.00000000000000+solcur[0])*x[0]+2.00000000000000*(1.00000000000000+solcur[0])*x[1]-2.00000000000000*(-1.00000000000000+solcur[0])*x[2]+(solcur[2]*(y[2]*(z[0]-z[1])+(-y[0]+y[1])*z[2])));
+    
+    j[2]= normal[0];
+
+    j[3]=0.125000000000000*(-2.00000000000000*(-1.00000000000000+solcur[1])*y[0]+(2.00000000000000*(1.00000000000000+solcur[1])*(y[1]-y[2])+solcur[2]*(x[1]*z[0]-x[2]*z[0]-x[0]*z[1]+x[0]*z[2])));
+
+    j[4]=0.125000000000000*(-2.00000000000000*(1.00000000000000+solcur[0])*y[0]+2.00000000000000*(1.00000000000000+solcur[0])*y[1]-2.00000000000000*(-1.00000000000000+solcur[0])*y[2]+(solcur[2]*(x[2]*(-z[0]+z[1])+(x[0]-x[1])*z[2])));
+
+    j[5]= normal[1];
+
+    j[6]=0.125000000000000*((solcur[2]*(-(x[1]*y[0])+x[2]*y[0]+x[0]*y[1]-x[0]*y[2]))-2.00000000000000*((-1.00000000000000+solcur[1])*z[0]-(1.00000000000000+solcur[1])*(z[1]-z[2])));
+
+    j[7]=0.125000000000000*((solcur[2]*(x[2]*(y[0]-y[1])+(-x[0]+x[1])*y[2]))-2.00000000000000*(1.00000000000000+solcur[0])*z[0]+2.00000000000000*(1.00000000000000+solcur[0])*z[1]-2.00000000000000*(-1.00000000000000+solcur[0])*z[2]);
+
+    j[8]= normal[2];
+
+    jdet=-(j[2]*j[4]*j[6])+j[1]*j[5]*j[6]+j[2]*j[3]*j[7]-
+	   j[0]*j[5]*j[7]-j[1]*j[3]*j[8]+j[0]*j[4]*j[8];
+
+    // Solve linear system (j*deltasol = -gn) for deltasol at step n+1
+
+    deltasol[0] = (gn[2]*(j[2]*j[4]-j[1]*j[5])+gn[1]*(-(j[2]*j[7])+
+                                                      j[1]*j[8])+gn[0]*(j[5]*j[7]-j[4]*j[8]))/jdet;
+    deltasol[1] = (gn[2]*(-(j[2]*j[3])+j[0]*j[5])+gn[1]*(j[2]*j[6]-
+                                                         j[0]*j[8])+gn[0]*(-(j[5]*j[6])+j[3]*j[8]))/jdet;
+    deltasol[2] = (gn[2]*(j[1]*j[3]-j[0]*j[4])+gn[1]*(-(j[1]*j[6])+
+                                                      j[0]*j[7])+gn[0]*(j[4]*j[6]-j[3]*j[7]))/jdet;
+    
+  } while ( !within_tolerance( vector_norm_sq(deltasol,3), isInElemConverged) &&
+	    ++i < MAX_NR_ITER );
+
+  // Fill in solution vector; only include the distance (in the third
+  // solution vector slot) if npar_coord = 3 (this is how the user
+  // requests it)
+
+  isoParCoord[0] = isoParCoord[1] = isoParCoord[2] = std::numeric_limits<double>::max();
+  double dist = std::numeric_limits<double>::max();
+
+  if ( i < MAX_NR_ITER ) {
+    isoParCoord[0] = solcur[0] + deltasol[0];
+    isoParCoord[1] = solcur[1] + deltasol[1];
+    // Rescale the distance vector by the length of the (non-unit) normal vector,
+    // which was used above in the NR iteration.
+    const double area   = std::sqrt(vector_norm_sq(normal,3));
+    const double length = std::sqrt(area);
+    const double isoParCoord_2  = (solcur[2] + deltasol[2]) * length;
+    isoParCoord[2] = isoParCoord_2;
+
+    std::vector<double> xtmp = { isoParCoord[0], isoParCoord[1], isoParCoord_2 };
+    dist = parametric_distance(xtmp);
+  }
+  return dist;
+}
+
+//--------------------------------------------------------------------------
+//-------- interpolatePoint ------------------------------------------------
+//--------------------------------------------------------------------------
+void
+Quad93DSCS::interpolatePoint(
+  const int &nComp,
+  const double *isoParCoord,
+  const double *field,
+  double *result )
+{
+  double one = 1.0;
+  double half   = one / 2.0;
+  double qtr    = one / 4.0;
+
+  double s = isoParCoord[0];
+  double t = isoParCoord[1];
+
+  double one_m_s = one - s;
+  double one_p_s = one + s;
+  double one_m_t = one - t;
+  double one_p_t = one + t;
+
+  double one_m_ss = one - s * s;
+  double one_m_tt = one - t * t;
+
+  for ( int i = 0; i < nComp; i++ ) {
+    int b = 9*i;       // Base 'field array' index for ith component
+
+    result[i] =   qtr * s * t *  one_m_s * one_m_t * field[b+ 0]+
+      -qtr * s * t *  one_p_s *  one_m_t * field[b+ 1]+
+      qtr * s * t *  one_p_s *  one_p_t * field[b+ 2]+
+      -qtr * s * t *  one_m_s *  one_p_t * field[b+ 3]+
+      -half * t * one_p_s * one_m_s * one_m_t * field[b+ 4]+
+      half * s * one_p_t * one_m_t * one_p_s * field[b+ 5]+
+      half * t * one_p_s * one_m_s * one_p_t * field[b+ 6]+
+      -half * s * one_p_t * one_m_t * one_m_s * field[b+ 7]+
+      one_m_ss * one_m_tt * field[b+ 8];
+  }
+}
+
+//--------------------------------------------------------------------------
+//-------- non_unit_face_normal --------------------------------------------
+//--------------------------------------------------------------------------
+void
+Quad93DSCS::non_unit_face_normal(	
+  const double * isoParCoord, 
+  const double * elemNodalCoord,
+  double * normalVector )
+{
+  double xi  = isoParCoord[0];
+  double eta = isoParCoord[1];
+
+  // Translate element so that node 0 is at (x,y,z) = (0,0,0)
+
+  double x[3] = { elemNodalCoord[1] - elemNodalCoord[0],
+                  elemNodalCoord[2] - elemNodalCoord[0],
+                  elemNodalCoord[3] - elemNodalCoord[0] };
+  
+  double y[3] = { elemNodalCoord[10] - elemNodalCoord[9],
+                  elemNodalCoord[11] - elemNodalCoord[9],
+                  elemNodalCoord[12] - elemNodalCoord[9] };
+  
+  double z[3] = { elemNodalCoord[19] - elemNodalCoord[18],
+                  elemNodalCoord[20] - elemNodalCoord[18],
+                  elemNodalCoord[21] - elemNodalCoord[18] };
+  
+  // Mathematica-generated and simplified code for the normal vector
+
+  const double n0 = 0.125000000000000*(xi*y[2]*z[0]+y[0]*z[1]+xi*y[0]*z[1]-y[2]*z[1]-
+                                       xi*y[0]*z[2]+y[1]*(-((1.00000000000000+xi)*z[0])+
+                                                          (1.00000000000000+eta)*z[2])+eta*(y[2]*z[0]-y[2]*z[1]-y[0]*z[2]));
+
+  const double n1 = 0.125000000000000*(-(xi*x[2]*z[0])-x[0]*z[1]-xi*x[0]*z[1]+x[2]*z[1]+
+                                       xi*x[0]*z[2]+x[1]*((1.00000000000000+xi)*z[0]-
+                                                          (1.00000000000000+eta)*z[2])+eta*(-(x[2]*z[0])+x[2]*z[1]+x[0]*z[2]));
+  
+  const double n2 = 0.125000000000000*(xi*x[2]*y[0]+x[0]*y[1]+xi*x[0]*y[1]-x[2]*y[1]-
+                                       xi*x[0]*y[2]+x[1]*(-((1.00000000000000+xi)*y[0])+
+                                                          (1.00000000000000+eta)*y[2])+eta*(x[2]*y[0]-x[2]*y[1]-x[0]*y[2]));
+  
+  normalVector[0] = n0;
+  normalVector[1] = n1;
+  normalVector[2] = n2;
+}
+
+//--------------------------------------------------------------------------
+//-------- parametric_distance ---------------------------------------------
+//--------------------------------------------------------------------------
+double Quad93DSCS::parametric_distance(const std::vector<double> &x)
+{
+  const double ELEM_THICK  = 0.01;
+  std::vector<double> y = { std::fabs(x[0]), std::fabs(x[1]), std::fabs(x[2]) };
+  double d = y[0];
+  if (d < y[1]) d = y[1];
+  if (ELEM_THICK < y[2] && d < 1+y[2]) d = 1+y[2];
+  return d;
 }
 
 //--------------------------------------------------------------------------

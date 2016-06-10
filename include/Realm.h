@@ -25,14 +25,12 @@
 
 // standard c++
 #include <map>
-#include <memory>
 #include <string>
 #include <vector>
 #include <stdint.h>
 
 namespace stk {
 namespace mesh {
-struct Entity;
 class Part;
 }
 namespace io {
@@ -71,13 +69,15 @@ class MasterElement;
 class PropertyEvaluator;
 class HDF5FilePtr;
 class Transfer;
-class ElementDescription;
-class PromoteElement;
-class PromotedElementIO;
 
 class SolutionNormPostProcessing;
 class TurbulenceAveragingPostProcessing;
 class DataProbePostProcessing;
+class ActuatorLine;
+
+class ElementDescription;
+class PromoteElement;
+class PromotedElementIO;
 
 class Realm {
  public:
@@ -351,6 +351,9 @@ class Realm {
   void push_equation_to_systems(
     EquationSystem *eqSystem);
 
+  // provide all of the physics target names
+  const std::vector<std::string> &get_physics_target_names();
+
   Realms& realms_;
 
   std::string name_;
@@ -387,8 +390,6 @@ class Realm {
   // for element, side, edge, node rank (node not used)
   stk::mesh::Selector adapterSelector_[4];
   Teuchos::RCP<stk::mesh::Selector> activePartForIO_;
-  AlgorithmDriver *postConvergedAlgDriver_;
-  std::vector<Algorithm *> postConvergedAlg_;
 
   TimeIntegrator *timeIntegrator_;
 
@@ -410,6 +411,7 @@ class Realm {
   SolutionNormPostProcessing *solutionNormPostProcessing_;
   TurbulenceAveragingPostProcessing *turbulenceAveragingPostProcessing_;
   DataProbePostProcessing *dataProbePostProcessing_;
+  ActuatorLine *actuatorLine_;
 
   std::vector<Algorithm *> propertyAlg_;
   std::map<PropertyIdentifier, ScalarFieldType *> propertyMap_;
@@ -492,32 +494,9 @@ class Realm {
   // empty part vector should it be required
   stk::mesh::PartVector emptyPartVector_;
 
-  // Part holding added nodes
+  // base and promote mesh parts
   stk::mesh::PartVector basePartVector_;
-  stk::mesh::PartVector promotedPartVector_;
-  stk::mesh::PartVector superElemPartVector_;
-
-  // element promotion tools
-  bool doPromotion_;
-  unsigned promotionOrder_;
-  std::string quadType_;
-  double timerPromoteMesh_;
-  std::unique_ptr<ElementDescription> elem_;
-  std::unique_ptr<PromoteElement> promotion_;
-  std::unique_ptr<PromotedElementIO> promotionIO_;
-  void setup_element_promotion();
-  void promote_elements();
-  void side_node_ordinals_all(
-    const stk::topology& theElemTopo,
-    unsigned face_ordinal,
-    std::vector<int>& face_node_ordinal_vec) const;
-  stk::mesh::Entity const* begin_side_nodes_all(stk::mesh::Entity elem) const;
-  stk::mesh::Entity const* begin_side_nodes_all(const stk::mesh::Bucket& b, stk::mesh::EntityId offset) const;
-  unsigned num_side_nodes_all(const stk::mesh::Bucket& bucket,
-    stk::mesh::EntityId id) const;
-  unsigned num_side_nodes_all(stk::mesh::Entity elem) const;
-  bool using_SGL_quadrature() const;
-  const stk::mesh::Entity* const face_elem_map(const stk::mesh::Entity& face) const;
+  stk::mesh::PartVector superPartVector_;
 
   std::vector<AuxFunctionAlgorithm *> bcDataAlg_;
 
@@ -549,6 +528,31 @@ class Realm {
   double get_turb_model_constant(
     const TurbulenceModelConstant turbModelEnum);
   bool process_adaptivity();
+
+
+  // element promotion
+
+  // options
+  bool doPromotion_; // conto
+  unsigned promotionOrder_;
+  std::string quadType_;
+  bool useReducedGeometricBasis_;
+
+  // tools
+  std::unique_ptr<ElementDescription> elem_; // holds topo info + some cvfem tools
+  std::unique_ptr<PromoteElement> promotion_; // mesh promoter
+  std::unique_ptr<PromotedElementIO> promotionIO_; // mesh outputer
+  std::vector<std::string> superTargetNames_;
+
+  void setup_element_promotion(); // create super parts
+  void promote_elements(); // create new super element / sides on parts
+  void create_promoted_output_mesh(); // method to create output of linear subelements
+  bool using_SGL_quadrature() const { return quadType_ == "SGL"; };
+  bool high_order_active() const { return doPromotion_; };
+  std::string physics_part_name(std::string) const;
+
+  double timerPromoteMesh_; // timer
+
 };
 
 } // namespace nalu

@@ -178,8 +178,7 @@ AssembleNodalGradUElemContactAlgorithm::add_elem_gradq()
     // extract master element; hard coded for quad or hex; 
     // quad is always true for 2D while for 3D, either hex or wedge apply
     const stk::topology & theElemTopo = (nDim == 2) ? stk::topology::QUAD_4_2D : stk::topology::HEX_8;
-    const int num_face_nodes = (nDim == 2) ? 2 : 4;
-    std::vector<int> face_node_ordinals(num_face_nodes);
+    
     
     // extract master element for extruded element type
     MasterElement *meSCS = realm_.get_surface_master_element(theElemTopo);
@@ -222,13 +221,13 @@ AssembleNodalGradUElemContactAlgorithm::add_elem_gradq()
       stk::mesh::Entity face = b[k];
       
       // extract the connected element to this exposed face; should be single in size!
-      stk::mesh::Entity const* face_elem_rels = realm_.face_elem_map(face);
+      stk::mesh::Entity const* face_elem_rels = bulk_data.begin_elements(face);
       stk::mesh::ConnectivityOrdinal const* face_elem_ords = bulk_data.begin_element_ordinals(face);
       const int num_elements = bulk_data.num_elements(face);
       ThrowRequire( num_elements == 1 );
       stk::mesh::Entity element = face_elem_rels[0];
       const int face_ordinal = face_elem_ords[0];
-      theElemTopo.side_node_ordinals(face_ordinal, face_node_ordinals.begin());
+      const int *face_node_ordinals = meSCS->side_node_ordinals(face_ordinal);
       
       // concentrate on loading up the nodal coordinates/vectorQ for the extruded element
       stk::mesh::Entity const * face_node_rels = b.begin_nodes(k);

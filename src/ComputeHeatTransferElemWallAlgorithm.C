@@ -160,8 +160,8 @@ ComputeHeatTransferElemWallAlgorithm::execute()
       //======================================
       // gather nodal data off of face
       //======================================
-      stk::mesh::Entity const * face_node_rels = realm_.begin_side_nodes_all(face);
-      const int num_face_nodes = realm_.num_side_nodes_all(face);
+      stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
+      const int num_face_nodes = bulk_data.num_nodes(face);
       // sanity check on num nodes
       ThrowAssert( num_face_nodes == nodesPerFace );
       for ( int ni = 0; ni < num_face_nodes; ++ni ) {
