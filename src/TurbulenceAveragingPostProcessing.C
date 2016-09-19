@@ -137,21 +137,9 @@ TurbulenceAveragingPostProcessing::load(
         get_if_present(y_spec, "compute_tke", avInfo->computeTke_, avInfo->computeTke_);
         get_if_present(y_spec, "compute_favre_stress", avInfo->computeFavreStress_, avInfo->computeFavreStress_);
         get_if_present(y_spec, "compute_favre_tke", avInfo->computeFavreTke_, avInfo->computeFavreTke_);
-
-
-
-        // ================================vorticity====================================================
         get_if_present(y_spec, "compute_vorticity", avInfo->computeVorticity_, avInfo->computeVorticity_);
-        // ================================vorticity====================================================
-
-
-        // ================================Q criterion====================================================
         get_if_present(y_spec, "compute_q_criterion", avInfo->computeQcriterion_, avInfo->computeQcriterion_);
-        // ================================Q criterion====================================================
-
-        // ================================lambdaci======================================================
         get_if_present(y_spec, "compute_lambda_ci", avInfo->computeLambdaCI_, avInfo->computeLambdaCI_);
-        // ================================lambdaci=========================================================
 
         // we will need Reynolds/Favre-averaged velocity if we need to compute TKE
         if ( avInfo->computeTke_ || avInfo->computeReynoldsStress_ ) {
@@ -223,19 +211,13 @@ TurbulenceAveragingPostProcessing::setup()
         register_field(tkeName, sizeOfField, metaData, targetPart);
       }
 
-      // =====================vorticity======================================
-
       const int vortSize = realm_.spatialDimension_;
       if ( avInfo->computeVorticity_ ) {
         // hack a name; the name is not tied to the average info name
         const std::string vorticityName = "vorticity";
         VectorFieldType *vortField = &(metaData.declare_field<VectorFieldType>(stk::topology::NODE_RANK, vorticityName));
         stk::mesh::put_field(*vortField, *targetPart, vortSize);
-//        register_field(vorticityName, vortSize, metaData, targetPart);
       }
-      // ================================vorticity============================
-
-      // =====================Q criterion======================================
 
       if ( avInfo->computeQcriterion_ ) {
     	// hack a name; the name is not tied to the average info name
@@ -243,9 +225,6 @@ TurbulenceAveragingPostProcessing::setup()
         const int sizeOfField = 1;
         register_field(QcritName, sizeOfField, metaData, targetPart);
       }
-      // ================================Q criterion============================
-
-     // =====================lambdaci=====================================
 
       if ( avInfo->computeLambdaCI_ ) {
         // hack a name; the name is not tied to the average info name
@@ -253,7 +232,6 @@ TurbulenceAveragingPostProcessing::setup()
         const int sizeOfField = 1;
         register_field(lambdaName, sizeOfField, metaData, targetPart);
       }
-     // ===============================lambdaci============================
 
       // second, register stress
       const int stressSize = realm_.spatialDimension_ == 3 ? 6 : 3;
@@ -439,23 +417,18 @@ TurbulenceAveragingPostProcessing::review(
   if ( avInfo->computeFavreStress_ ) {
     NaluEnv::self().naluOutputP0() << "Favre Stress will be computed; add favre_stress to output"<< std::endl;
   }
-  // ================================vorticity====================================================
+
   if ( avInfo->computeVorticity_ ) {
     NaluEnv::self().naluOutputP0() << "Vorticity will be computed; add vorticity to output"<< std::endl;
   }
-  // ================================vorticity====================================================
 
-  // ================================Q criterion====================================================
   if ( avInfo->computeQcriterion_ ) {
     NaluEnv::self().naluOutputP0() << "Q criterion will be computed; add q_criterion to output"<< std::endl;
   }
-  // ================================Q criterion====================================================
 
-  //===============================lambda CI=======================================================
   if ( avInfo->computeLambdaCI_ ) {
 	NaluEnv::self().naluOutputP0() << "Lambda CI will be computed; add lambda_ci to output"<< std::endl;
   }
-  //===============================lambda CI=======================================================
 
 
   NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
@@ -560,23 +533,15 @@ TurbulenceAveragingPostProcessing::execute()
     if ( avInfo->computeFavreTke_ ) {
       compute_tke(false, avInfo->name_, s_all_nodes);
     }
-    // ============process vorticity=========================
     if ( avInfo->computeVorticity_ ) {
       compute_vorticity(avInfo->name_, s_all_nodes);
     }
-    // ====================vorticity=========================
-
-    // ============Q criterion=========================
     if ( avInfo->computeQcriterion_ ) {
       compute_q_criterion(avInfo->name_, s_all_nodes);
     }
-    // ====================Q criterion=========================
-
-    // ====================Lambda CI===========================
     if ( avInfo->computeLambdaCI_) {
       compute_lambda_ci(avInfo->name_, s_all_nodes);
     }
-    // ====================Lambda CI===========================
 
     // process stress
     if ( avInfo->computeFavreStress_ ) {
@@ -762,7 +727,7 @@ TurbulenceAveragingPostProcessing::compute_favre_stress(
 
 
 //--------------------------------------------------------------------------
-//-------- COMPUTE_VORTICITY -----------------------------------------------------
+//-------- compute_vortictiy -----------------------------------------------
 //--------------------------------------------------------------------------
 void
 TurbulenceAveragingPostProcessing::compute_vorticity(
@@ -809,7 +774,7 @@ TurbulenceAveragingPostProcessing::compute_vorticity(
 }
 
 //--------------------------------------------------------------------------
-//-------- COMPUTE_Qcriterion-----------------------------------------------
+//-------- compute_q_criterion----------------------------------------------
 //--------------------------------------------------------------------------
 void
 TurbulenceAveragingPostProcessing::compute_q_criterion(
@@ -869,7 +834,7 @@ TurbulenceAveragingPostProcessing::compute_q_criterion(
 
 
 //--------------------------------------------------------------------------
-//-------- COMPUTE_LAMBDA CI -----------------------------------------------------
+//-------- compute_lambda_ci -----------------------------------------------
 //--------------------------------------------------------------------------
 void
 TurbulenceAveragingPostProcessing::compute_lambda_ci(
@@ -916,10 +881,8 @@ TurbulenceAveragingPostProcessing::compute_lambda_ci(
         std::complex<double> A (1.0,0.0);
         const double Ar = 1.0;
         std::complex<double> B(-trace,0.0) ;
-//        B = -trace;
         const double Br = -trace;
         std::complex<double> C(det,0.0) ;
-//        C = det;
         const double Cr = det;
         const double Discrim = Br*Br - 4*Ar*Cr;
 
