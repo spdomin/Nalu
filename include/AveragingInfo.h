@@ -42,6 +42,7 @@ public:
   bool computeFavreTke_;
   bool computeVorticity_;
   bool computeQcriterion_;
+  bool computeLambdaCI_;
 
   // vector of part names, e.g., block_1, surface_2
   std::vector<std::string> targetNames_;
