@@ -102,9 +102,14 @@ public:
 	const std::string &averageBlockName,
 	stk::mesh::Selector s_all_nodes);
 
-  void compute_lambda_ci(
+  void compute_lambda_ci_2d(
 	const std::string &averageBlockName,
 	stk::mesh::Selector s_all_nodes);
+
+  void compute_lambda_ci_3d(
+ 	const std::string &averageBlockName,
+ 	stk::mesh::Selector s_all_nodes);
+
 
   // hold the realm
   Realm &realm_;

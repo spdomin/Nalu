@@ -417,15 +417,12 @@ TurbulenceAveragingPostProcessing::review(
   if ( avInfo->computeFavreStress_ ) {
     NaluEnv::self().naluOutputP0() << "Favre Stress will be computed; add favre_stress to output"<< std::endl;
   }
-
   if ( avInfo->computeVorticity_ ) {
     NaluEnv::self().naluOutputP0() << "Vorticity will be computed; add vorticity to output"<< std::endl;
   }
-
   if ( avInfo->computeQcriterion_ ) {
     NaluEnv::self().naluOutputP0() << "Q criterion will be computed; add q_criterion to output"<< std::endl;
   }
-
   if ( avInfo->computeLambdaCI_ ) {
 	NaluEnv::self().naluOutputP0() << "Lambda CI will be computed; add lambda_ci to output"<< std::endl;
   }
@@ -540,7 +537,13 @@ TurbulenceAveragingPostProcessing::execute()
       compute_q_criterion(avInfo->name_, s_all_nodes);
     }
     if ( avInfo->computeLambdaCI_) {
-      compute_lambda_ci(avInfo->name_, s_all_nodes);
+      const int nDim = realm_.spatialDimension_;
+      if(nDim == 2){
+      compute_lambda_ci_2d(avInfo->name_, s_all_nodes);
+      }
+      else{
+      compute_lambda_ci_3d(avInfo->name_, s_all_nodes);
+      }
     }
 
     // process stress
@@ -727,7 +730,7 @@ TurbulenceAveragingPostProcessing::compute_favre_stress(
 
 
 //--------------------------------------------------------------------------
-//-------- compute_vortictiy -----------------------------------------------
+//-------- compute_vorticity -----------------------------------------------
 //--------------------------------------------------------------------------
 void
 TurbulenceAveragingPostProcessing::compute_vorticity(
@@ -763,7 +766,7 @@ TurbulenceAveragingPostProcessing::compute_vorticity(
     	for ( int j = 0; j < nDim; ++j ) {
 // Vorticity is the difference in the off diagonals, calculate only those
     	  if( (i==0 && j==1) || (i==1 && j ==2) || (i==2 && j==0) ){
-    	  const double vort_ = du[k*offSet+(nDim*j+i)] - du[k*offSet+(vortswitch+j)] ;
+    	  const double vort_ = du[k*offSet+(nDim*j+i)] - du[k*offSet+(vortswitch+j)];
 // Store the x, y, z components of vorticity
     	  vorticity_[k*nDim + (nDim-i-j)] = vort_;
     	  }
@@ -774,7 +777,7 @@ TurbulenceAveragingPostProcessing::compute_vorticity(
 }
 
 //--------------------------------------------------------------------------
-//-------- compute_q_criterion----------------------------------------------
+//-------- compute_q_criterion ---------------------------------------------
 //--------------------------------------------------------------------------
 void
 TurbulenceAveragingPostProcessing::compute_q_criterion(
@@ -808,25 +811,21 @@ TurbulenceAveragingPostProcessing::compute_q_criterion(
       double Sij = 0.0;
       double Omegaij = 0.0;
       double divsquared = 0.0;
+
       for (int i = 0; i < nDim; ++i){
     	const int offSet = nDim*i;
+     	const double divergence = du[offSet + i];
+    	divsquared += divergence;
     	for(int j = 0; j < nDim; ++j){
 // Compute the squares of strain rate tensor and vorticity tensor
     	  const double rateOfStrain =  0.5*(du[offSet+j] + du[nDim*j +i]) ;
-    	  const double vorticityTensor =  0.5*(du[offSet+j] - du[nDim*j +i]) ;
+    	  const double vorticityTensor =  0.5*(du[offSet+j] - du[nDim*j +i]);
     	  Sij += rateOfStrain*rateOfStrain;
     	  Omegaij += vorticityTensor*vorticityTensor;
     	}
       }
-      if(nDim == 2){
-        const double divergence = du[0] + du[3];
-        divsquared = divergence*divergence;
-      }
-      else{
-        const double divergence = du[0] + du[4] + du[8];
-        divsquared = divergence*divergence;
-      }
-      Qcriterion_[k] = 0.5*(Omegaij - Sij) +  0.5*divsquared ;
+      divsquared = divsquared*divsquared;
+      Qcriterion_[k] = 0.5*(Omegaij - Sij) +  0.5*divsquared;
 
     }
   }
@@ -834,16 +833,15 @@ TurbulenceAveragingPostProcessing::compute_q_criterion(
 
 
 //--------------------------------------------------------------------------
-//-------- compute_lambda_ci -----------------------------------------------
+//-------- compute_lambda_ci_2d --------------------------------------------
 //--------------------------------------------------------------------------
 void
-TurbulenceAveragingPostProcessing::compute_lambda_ci(
+TurbulenceAveragingPostProcessing::compute_lambda_ci_2d(
   const std::string &averageBlockName,
   stk::mesh::Selector s_all_nodes)
 {
   stk::mesh::MetaData & metaData = realm_.meta_data();
 
-  const int nDim = realm_.spatialDimension_;
   const std::string lambdaName = "lambda_ci";
 
   // extract fields
@@ -866,96 +864,122 @@ TurbulenceAveragingPostProcessing::compute_lambda_ci(
 
       const double *a_matrix = stk::mesh::field_data(*dudx_, node);
 
-// Check if 2-D or 3-D, which will determine whether to solve a quadratic or cubic equation
-      if(nDim == 2){
-// Solve a quadratic eigenvalue equation, A*Lambda^2 + B*Lambda + C = 0
+// Solve a quadratic eigenvalue equation, A*Lambda^2 + B*Lambda + C = 0, where A = 1.0, B & C are the 2 Galilean invariants
         const double a11 = a_matrix[0];
         const double a12 = a_matrix[1];
         const double a21 = a_matrix[2];
         const double a22 = a_matrix[3];
 
 // For a 2x2 matrix, the first and second invariant are the -trace and the determinant
-        const double trace = a11 + a22 ;
+        const double trace = a11 + a22;
         const double det = a11*a22 - a12*a21;
 
-        std::complex<double> A (1.0,0.0);
-        const double Ar = 1.0;
-        std::complex<double> B(-trace,0.0) ;
+        std::complex<double> B(-trace,0.0);
         const double Br = -trace;
-        std::complex<double> C(det,0.0) ;
+        std::complex<double> C(det,0.0);
         const double Cr = det;
-        const double Discrim = Br*Br - 4*Ar*Cr;
+        const double Discrim = Br*Br - 4.0*Cr;
 
 // Check whether real or complex eigenvalues
-        if(Discrim >= 0){
+      if(Discrim >= 0){
 // Two real eigenvalues, lambda_ci not applicable
-          LambdaCI_[k] = 0.0;
-        }
-        else{
-// Two complex conjugate eigenvalues, lambda_ci applicable
-          std::complex<double> EIG1;
-          EIG1 = -B/2.0 + std::sqrt(B*B - A*C*4.0)/2.0 ;
-          std::complex<double> EIG2;
-          EIG2 = -B/2.0 - std::sqrt(B*B - A*C*4.0)/2.0 ;
-
-          LambdaCI_[k] = std::max(std::imag(EIG1), std::imag(EIG2)  );
-
-        }
+        LambdaCI_[k] = 0.0;
       }
       else{
-// Solve a cubic eigenvalue equation, A*Lambda^3 + B*Lambda^2 + C*Lambda + D = 0
-        const double a11 = a_matrix[0];
-        const double a12 = a_matrix[1];
-        const double a13 = a_matrix[2];
-        const double a21 = a_matrix[3];
-        const double a22 = a_matrix[4];
-        const double a23 = a_matrix[5];
-        const double a31 = a_matrix[6];
-        const double a32 = a_matrix[7];
-        const double a33 = a_matrix[8];
+// Two complex conjugate eigenvalues, lambda_ci applicable
+        std::complex<double> EIG1;
+        EIG1 = -B/2.0 + std::sqrt(B*B - 4.0*C)/2.0;
+        std::complex<double> EIG2;
+        EIG2 = -B/2.0 - std::sqrt(B*B - 4.0*C)/2.0;
+
+        LambdaCI_[k] = std::max( std::imag(EIG1), std::imag(EIG2) );
+
+      }
+    }
+  }
+}
+
+
+//--------------------------------------------------------------------------
+//-------- compute_lambda_ci_3d --------------------------------------------
+//--------------------------------------------------------------------------
+void
+TurbulenceAveragingPostProcessing::compute_lambda_ci_3d(
+  const std::string &averageBlockName,
+  stk::mesh::Selector s_all_nodes)
+{
+  stk::mesh::MetaData & metaData = realm_.meta_data();
+
+  const std::string lambdaName = "lambda_ci";
+
+  // extract fields
+  stk::mesh::FieldBase *Lambda = metaData.get_field(stk::topology::NODE_RANK, lambdaName);
+  GenericFieldType *dudx_ = metaData.get_field<GenericFieldType>(stk::topology::NODE_RANK, "dudx");
+
+  stk::mesh::BucketVector const& node_buckets_vort =
+    realm_.get_buckets( stk::topology::NODE_RANK, s_all_nodes );
+  for ( stk::mesh::BucketVector::const_iterator ib = node_buckets_vort.begin();
+        ib != node_buckets_vort.end() ; ++ib ) {
+    stk::mesh::Bucket & b = **ib ;
+    const stk::mesh::Bucket::size_type length   = b.size();
+
+    // fields
+
+    double *LambdaCI_ = (double*)stk::mesh::field_data(*Lambda,b);
+
+    for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
+      stk::mesh::Entity node = b[k];
+
+      const double *a_matrix = stk::mesh::field_data(*dudx_, node);
+
+// Solve a cubic eigenvalue equation, A*Lambda^3 + B*Lambda^2 + C*Lambda + D = 0, where A = 1.0 and B, C & D are the 3 Galilean invariants
+      const double a11 = a_matrix[0];
+      const double a12 = a_matrix[1];
+      const double a13 = a_matrix[2];
+      const double a21 = a_matrix[3];
+      const double a22 = a_matrix[4];
+      const double a23 = a_matrix[5];
+      const double a31 = a_matrix[6];
+      const double a32 = a_matrix[7];
+      const double a33 = a_matrix[8];
 
 // For a 3x3 matrix, the 3 invariants are the -trace, the sum of principal minors, and the -determinant
-        const double trace = a11 + a22 + a33;
-        const double trace2 = (a11*a11 + a12*a21 + a13*a31) + (a12*a21 + a22*a22 + a23*a32) + (a13*a31 + a23*a32 + a33*a33);
-        const double det = a11*(a22*a33 - a23*a32) - a12*(a21*a33 - a23*a31) + a13*(a21*a32 - a22*a31);
+      const double trace = a11 + a22 + a33;
+      const double trace2 = (a11*a11 + a12*a21 + a13*a31) + (a12*a21 + a22*a22 + a23*a32) + (a13*a31 + a23*a32 + a33*a33);
+      const double det = a11*(a22*a33 - a23*a32) - a12*(a21*a33 - a23*a31) + a13*(a21*a32 - a22*a31);
 
-        std::complex<double> A (1.0,0.0);
-        const double Ar = 1.0;
-        std::complex<double> B(-trace,0.0) ;
-        const double Br = -trace;
-        std::complex<double> C(-0.5*(trace2 - trace*trace),0.0) ;
-        const double Cr = -0.5*(trace2 - trace*trace);
-        std::complex<double> D(-det,0.0) ;
-        const double Dr = -det;
-        const double Discrim = 18.0*Ar*Br*Cr*Dr - 4.0*Br*Br*Br*Dr + Br*Br*Cr*Cr - 4.0*Ar*Cr*Cr*Cr - 27.0*Ar*Ar*Dr*Dr ;
+      std::complex<double> B(-trace,0.0);
+      const double Br = -trace;
+      std::complex<double> C(-0.5*(trace2 - trace*trace),0.0);
+      const double Cr = -0.5*(trace2 - trace*trace);
+      std::complex<double> D(-det,0.0);
+      const double Dr = -det;
+      const double Discrim = 18.0*Br*Cr*Dr - 4.0*Br*Br*Br*Dr + Br*Br*Cr*Cr - 4.0*Cr*Cr*Cr - 27.0*Dr*Dr;
 // Check whether real or complex eigenvalues
-        if(Discrim >= 0){
+      if(Discrim >= 0){
 // Equation has either 3 distinct real roots or a multiple root and all roots are real
 // lambda_ci not applicable
-          LambdaCI_[k] = 0.0;
-        }
-        else{
+        LambdaCI_[k] = 0.0;
+      }
+      else{
 // Equation has one real root and two complex conjugate roots
-          std::complex<double> Q ;
-          Q = std::sqrt( std::pow(B*B*B*2.0 - A*B*C*9.0 + A*A*D*27.0, 2.0) - 4.0*std::pow(B*B - A*C*3.0, 3.0) ) ;
-          std::complex<double> CC ;
-          CC = std::pow(0.5*(Q + 2.0*B*B*B - 9.0*A*B*C + 27.0*A*A*D), 1.0/3.0) ;
-          if(Br*Br - 3.0*Ar*Cr == 0.0){
-            Q = -Q;
-            CC = std::pow(0.5*(Q + 2.0*B*B*B - 9.0*A*B*C + 27.0*A*A*D), 1.0/3.0) ;
-          }
-          std::complex<double> II (0.0,-1.0);
-          std::complex<double> EIG1;
-          EIG1 = -B/(3.0*A) - CC/(3.0*A) - (B*B - 3.0*A*C)/(3.0*A*CC);
-          std::complex<double> EIG2;
-          EIG2 = -B/(3.0*A) + CC*(1.0 + II*std::sqrt(3.0) )/(6.0*A) + (1.0 - II*std::sqrt(3.0))*(B*B - 3.0*A*C)/(6.0*A*CC) ;
-          std::complex<double> EIG3;
-          EIG3 = -B/(3.0*A) + CC*(1.0 - II*std::sqrt(3.0) )/(6.0*A) + (1.0 + II*std::sqrt(3.0))*(B*B - 3.0*A*C)/(6.0*A*CC) ;
+// Solve algebraically. See Cardano's method or Vieta's method for derivation
+        std::complex<double> Q;
+        Q = std::sqrt( std::pow(2.0*B*B*B - 9.0*B*C + 27.0*D, 2.0) - 4.0*std::pow(B*B - 3.0*C, 3.0) );
+        std::complex<double> CC;
+        CC = std::pow(0.5*(Q + 2.0*B*B*B - 9.0*B*C + 27.0*D), 1.0/3.0);
 
-          double maxEIG12 = std::max(std::imag(EIG1), std::imag(EIG2));
-          LambdaCI_[k] = std::max(maxEIG12, std::imag(EIG3)  );
+        std::complex<double> II (0.0,-1.0);
+        std::complex<double> EIG1;
+        EIG1 = -B/(3.0) - CC/(3.0) - (B*B - 3.0*C)/(3.0*CC);
+        std::complex<double> EIG2;
+        EIG2 = -B/(3.0) + CC*(1.0 + II*std::sqrt(3.0) )/(6.0) + (1.0 - II*std::sqrt(3.0))*(B*B - 3.0*C)/(6.0*CC);
+        std::complex<double> EIG3;
+        EIG3 = -B/(3.0) + CC*(1.0 - II*std::sqrt(3.0) )/(6.0) + (1.0 + II*std::sqrt(3.0))*(B*B - 3.0*C)/(6.0*CC);
 
-        }
+        double maxEIG12 = std::max(std::imag(EIG1), std::imag(EIG2));
+        LambdaCI_[k] = std::max( maxEIG12, std::imag(EIG3) );
+
       }
     }
   }
