@@ -407,7 +407,7 @@ TurbulenceAveragingPostProcessing::review(
   
   if ( avInfo->computeFavreTke_ ) {
      NaluEnv::self().naluOutputP0() << "Favre-TKE will be computed; add resolved_favre_turbulent_ke to the Reynolds/Favre block for mean"<< std::endl;
-   }
+  }
 
   if ( avInfo->computeReynoldsStress_ ) {
     NaluEnv::self().naluOutputP0() << "Reynolds Stress will be computed; add reynolds_stress to output"<< std::endl;
@@ -425,8 +425,16 @@ TurbulenceAveragingPostProcessing::review(
     NaluEnv::self().naluOutputP0() << "Q criterion will be computed; add q_criterion to output"<< std::endl;
   }
 	
+  if ( avInfo->computeVorticity_ ) {
+    NaluEnv::self().naluOutputP0() << "Vorticity will be computed; add vorticity to output"<< std::endl;
+  }
+
+  if ( avInfo->computeQcriterion_ ) {
+    NaluEnv::self().naluOutputP0() << "Q criterion will be computed; add q_criterion to output"<< std::endl;
+  }
+
   if ( avInfo->computeLambdaCI_ ) {
-    NaluEnv::self().naluOutputP0() << "Lambda CI will be computed; add lambda_ci to output"<< std::endl;
+	NaluEnv::self().naluOutputP0() << "Lambda CI will be computed; add lambda_ci to output"<< std::endl;
   }
 
 	
@@ -730,6 +738,7 @@ TurbulenceAveragingPostProcessing::compute_favre_stress(
   }
 }
 
+
 //--------------------------------------------------------------------------
 //-------- compute_vorticity -----------------------------------------------
 //--------------------------------------------------------------------------
@@ -756,7 +765,6 @@ TurbulenceAveragingPostProcessing::compute_vorticity(
     const stk::mesh::Bucket::size_type length   = b.size();
 
     // fields
-
     const double * du = (double*)stk::mesh::field_data(*dudx_, b);
     double *vorticity_ = (double*)stk::mesh::field_data(*Vort,b);
     const int offSet = nDim*nDim;
@@ -804,7 +812,6 @@ TurbulenceAveragingPostProcessing::compute_q_criterion(
     const stk::mesh::Bucket::size_type length   = b.size();
 
     // fields
-
     double *Qcriterion_ = (double*)stk::mesh::field_data(*Qcrit,b);
 
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
@@ -827,10 +834,10 @@ TurbulenceAveragingPostProcessing::compute_q_criterion(
       }
       divsquared = divsquared*divsquared;
       Qcriterion_[k] = 0.5*(Omegaij - Sij) +  0.5*divsquared;
-
     }
   }
 }
+
 
 //--------------------------------------------------------------------------
 //-------- compute_lambda_ci_2d --------------------------------------------
@@ -856,7 +863,6 @@ TurbulenceAveragingPostProcessing::compute_lambda_ci_2d(
     const stk::mesh::Bucket::size_type length   = b.size();
 
     // fields
-
     double *LambdaCI_ = (double*)stk::mesh::field_data(*Lambda,b);
 
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
@@ -865,20 +871,20 @@ TurbulenceAveragingPostProcessing::compute_lambda_ci_2d(
       const double *a_matrix = stk::mesh::field_data(*dudx_, node);
 
 // Solve a quadratic eigenvalue equation, A*Lambda^2 + B*Lambda + C = 0, where A = 1.0, B & C are the 2 Galilean invariants
-        const double a11 = a_matrix[0];
-        const double a12 = a_matrix[1];
-        const double a21 = a_matrix[2];
-        const double a22 = a_matrix[3];
+      const double a11 = a_matrix[0];
+      const double a12 = a_matrix[1];
+      const double a21 = a_matrix[2];
+      const double a22 = a_matrix[3];
 
 // For a 2x2 matrix, the first and second invariant are the -trace and the determinant
-        const double trace = a11 + a22;
-        const double det = a11*a22 - a12*a21;
+      const double trace = a11 + a22;
+      const double det = a11*a22 - a12*a21;
 
-        std::complex<double> B(-trace,0.0);
-        const double Br = -trace;
-        std::complex<double> C(det,0.0);
-        const double Cr = det;
-        const double Discrim = Br*Br - 4.0*Cr;
+      std::complex<double> B(-trace,0.0);
+      const double Br = -trace;
+      std::complex<double> C(det,0.0);
+      const double Cr = det;
+      const double Discrim = Br*Br - 4.0*Cr;
 
 // Check whether real or complex eigenvalues
       if(Discrim >= 0){
@@ -923,7 +929,6 @@ TurbulenceAveragingPostProcessing::compute_lambda_ci_3d(
     const stk::mesh::Bucket::size_type length   = b.size();
 
     // fields
-
     double *LambdaCI_ = (double*)stk::mesh::field_data(*Lambda,b);
 
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
@@ -978,7 +983,6 @@ TurbulenceAveragingPostProcessing::compute_lambda_ci_3d(
 
         double maxEIG12 = std::max(std::imag(EIG1), std::imag(EIG2));
         LambdaCI_[k] = std::max( maxEIG12, std::imag(EIG3) );
-
       }
     }
   }
