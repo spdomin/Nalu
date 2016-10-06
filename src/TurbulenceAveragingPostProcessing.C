@@ -28,7 +28,6 @@
 #include <fstream>
 #include <iomanip>
 #include <algorithm>
-// complex for delta/lambda_CI
 #include <complex>
 #include <cmath>
 
@@ -417,17 +416,20 @@ TurbulenceAveragingPostProcessing::review(
   if ( avInfo->computeFavreStress_ ) {
     NaluEnv::self().naluOutputP0() << "Favre Stress will be computed; add favre_stress to output"<< std::endl;
   }
+	
   if ( avInfo->computeVorticity_ ) {
     NaluEnv::self().naluOutputP0() << "Vorticity will be computed; add vorticity to output"<< std::endl;
   }
+	
   if ( avInfo->computeQcriterion_ ) {
     NaluEnv::self().naluOutputP0() << "Q criterion will be computed; add q_criterion to output"<< std::endl;
   }
+	
   if ( avInfo->computeLambdaCI_ ) {
-	NaluEnv::self().naluOutputP0() << "Lambda CI will be computed; add lambda_ci to output"<< std::endl;
+    NaluEnv::self().naluOutputP0() << "Lambda CI will be computed; add lambda_ci to output"<< std::endl;
   }
 
-
+	
   NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
 }
 
@@ -728,7 +730,6 @@ TurbulenceAveragingPostProcessing::compute_favre_stress(
   }
 }
 
-
 //--------------------------------------------------------------------------
 //-------- compute_vorticity -----------------------------------------------
 //--------------------------------------------------------------------------
@@ -831,7 +832,6 @@ TurbulenceAveragingPostProcessing::compute_q_criterion(
   }
 }
 
-
 //--------------------------------------------------------------------------
 //-------- compute_lambda_ci_2d --------------------------------------------
 //--------------------------------------------------------------------------
@@ -898,7 +898,6 @@ TurbulenceAveragingPostProcessing::compute_lambda_ci_2d(
     }
   }
 }
-
 
 //--------------------------------------------------------------------------
 //-------- compute_lambda_ci_3d --------------------------------------------
