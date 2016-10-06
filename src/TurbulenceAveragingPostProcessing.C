@@ -407,7 +407,7 @@ TurbulenceAveragingPostProcessing::review(
   
   if ( avInfo->computeFavreTke_ ) {
      NaluEnv::self().naluOutputP0() << "Favre-TKE will be computed; add resolved_favre_turbulent_ke to the Reynolds/Favre block for mean"<< std::endl;
-  }
+   }
 
   if ( avInfo->computeReynoldsStress_ ) {
     NaluEnv::self().naluOutputP0() << "Reynolds Stress will be computed; add reynolds_stress to output"<< std::endl;
