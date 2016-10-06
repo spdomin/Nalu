@@ -897,7 +897,6 @@ TurbulenceAveragingPostProcessing::compute_lambda_ci_2d(
         EIG2 = -B/2.0 - std::sqrt(B*B - 4.0*C)/2.0;
 
         LambdaCI_[k] = std::max( std::imag(EIG1), std::imag(EIG2) );
-
       }
     }
   }
@@ -985,6 +984,7 @@ TurbulenceAveragingPostProcessing::compute_lambda_ci_3d(
     }
   }
 }
+
 
 } // namespace nalu
 } // namespace Sierra
