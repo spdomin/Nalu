@@ -416,15 +416,7 @@ TurbulenceAveragingPostProcessing::review(
   if ( avInfo->computeFavreStress_ ) {
     NaluEnv::self().naluOutputP0() << "Favre Stress will be computed; add favre_stress to output"<< std::endl;
   }
-	
-  if ( avInfo->computeVorticity_ ) {
-    NaluEnv::self().naluOutputP0() << "Vorticity will be computed; add vorticity to output"<< std::endl;
-  }
-	
-  if ( avInfo->computeQcriterion_ ) {
-    NaluEnv::self().naluOutputP0() << "Q criterion will be computed; add q_criterion to output"<< std::endl;
-  }
-	
+
   if ( avInfo->computeVorticity_ ) {
     NaluEnv::self().naluOutputP0() << "Vorticity will be computed; add vorticity to output"<< std::endl;
   }
@@ -437,7 +429,7 @@ TurbulenceAveragingPostProcessing::review(
 	NaluEnv::self().naluOutputP0() << "Lambda CI will be computed; add lambda_ci to output"<< std::endl;
   }
 
-	
+
   NaluEnv::self().naluOutputP0() << "===========================" << std::endl;
 }
 
@@ -869,20 +861,20 @@ TurbulenceAveragingPostProcessing::compute_lambda_ci_2d(
       const double *a_matrix = stk::mesh::field_data(*dudx_, node);
 
 // Solve a quadratic eigenvalue equation, A*Lambda^2 + B*Lambda + C = 0, where A = 1.0, B & C are the 2 Galilean invariants
-      const double a11 = a_matrix[0];
-      const double a12 = a_matrix[1];
-      const double a21 = a_matrix[2];
-      const double a22 = a_matrix[3];
+        const double a11 = a_matrix[0];
+        const double a12 = a_matrix[1];
+        const double a21 = a_matrix[2];
+        const double a22 = a_matrix[3];
 
 // For a 2x2 matrix, the first and second invariant are the -trace and the determinant
-      const double trace = a11 + a22;
-      const double det = a11*a22 - a12*a21;
+        const double trace = a11 + a22;
+        const double det = a11*a22 - a12*a21;
 
-      std::complex<double> B(-trace,0.0);
-      const double Br = -trace;
-      std::complex<double> C(det,0.0);
-      const double Cr = det;
-      const double Discrim = Br*Br - 4.0*Cr;
+        std::complex<double> B(-trace,0.0);
+        const double Br = -trace;
+        std::complex<double> C(det,0.0);
+        const double Cr = det;
+        const double Discrim = Br*Br - 4.0*Cr;
 
 // Check whether real or complex eigenvalues
       if(Discrim >= 0){
