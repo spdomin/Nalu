@@ -113,7 +113,6 @@ public:
 
   // hold the realm
   Realm &realm_;
-
   double currentTimeFilter_; /* provided by restart */
   double timeFilterInterval_; /* user supplied */
   bool forcedReset_; /* allows forhard reset */
