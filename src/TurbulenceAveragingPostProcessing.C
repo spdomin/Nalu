@@ -738,7 +738,6 @@ TurbulenceAveragingPostProcessing::compute_favre_stress(
   }
 }
 
-
 //--------------------------------------------------------------------------
 //-------- compute_vorticity -----------------------------------------------
 //--------------------------------------------------------------------------
@@ -837,7 +836,6 @@ TurbulenceAveragingPostProcessing::compute_q_criterion(
     }
   }
 }
-
 
 //--------------------------------------------------------------------------
 //-------- compute_lambda_ci_2d --------------------------------------------
@@ -987,7 +985,6 @@ TurbulenceAveragingPostProcessing::compute_lambda_ci_3d(
     }
   }
 }
-
 
 } // namespace nalu
 } // namespace Sierra
