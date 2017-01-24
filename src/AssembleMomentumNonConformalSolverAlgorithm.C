@@ -15,7 +15,6 @@
 #include <NonConformalInfo.h>
 #include <NonConformalManager.h>
 #include <Realm.h>
-#include <TimeIntegrator.h>
 #include <master_element/MasterElement.h>
 
 // stk_mesh/base/fem
@@ -65,6 +64,7 @@ AssembleMomentumNonConformalSolverAlgorithm::AssembleMomentumNonConformalSolverA
   ghostFieldVec_.push_back(&(velocity_->field_of_state(stk::mesh::StateNP1)));
   ghostFieldVec_.push_back(diffFluxCoeff_);
   ghostFieldVec_.push_back(coordinates_);
+  ghostFieldVec_.push_back(exposedAreaVec_);
   
   // specific algorithm options
   NonConformalAlgType algType = realm_.get_nc_alg_type();
@@ -144,6 +144,7 @@ AssembleMomentumNonConformalSolverAlgorithm::execute()
   std::vector<double> ws_o_elem_coordinates;
   std::vector<double> ws_c_diffFluxCoeff;
   std::vector<double> ws_o_diffFluxCoeff;  
+  std::vector<double> ws_o_coordinates;
 
   // master element data
   std::vector<double> ws_c_dndx;
@@ -201,6 +202,9 @@ AssembleMomentumNonConformalSolverAlgorithm::execute()
         currentIsoParCoords = dgInfo->currentIsoParCoords_;
         opposingIsoParCoords = dgInfo->opposingIsoParCoords_;
         
+        // mapping from ip to nodes for this ordinal
+        const int *ipNodeMap = meSCSCurrent->ipNodeMap(currentFaceOrdinal);
+
         // extract some master element info
         const int currentNodesPerFace = meFCCurrent->nodesPerElement_;
         const int opposingNodesPerFace = meFCOpposing->nodesPerElement_;
@@ -232,6 +236,7 @@ AssembleMomentumNonConformalSolverAlgorithm::execute()
         ws_o_face_velocity.resize(opposingNodesPerFace*nDim);
         ws_c_diffFluxCoeff.resize(currentNodesPerFace);
         ws_o_diffFluxCoeff.resize(opposingNodesPerFace);
+        ws_o_coordinates.resize(opposingNodesPerFace*nDim);
         ws_c_general_shape_function.resize(currentNodesPerFace);
         ws_o_general_shape_function.resize(opposingNodesPerFace);
         
@@ -251,7 +256,8 @@ AssembleMomentumNonConformalSolverAlgorithm::execute()
         double *p_o_elem_coordinates = &ws_o_elem_coordinates[0];
         double *p_c_diffFluxCoeff = &ws_c_diffFluxCoeff[0];
         double *p_o_diffFluxCoeff = &ws_o_diffFluxCoeff[0];
-               
+        double *p_o_coordinates = &ws_o_coordinates[0];
+
         // me pointers
         double *p_c_general_shape_function = &ws_c_general_shape_function[0];
         double *p_o_general_shape_function = &ws_o_general_shape_function[0];
@@ -288,9 +294,11 @@ AssembleMomentumNonConformalSolverAlgorithm::execute()
           p_o_diffFluxCoeff[ni] = *stk::mesh::field_data(*diffFluxCoeff_, node);
           // gather; vector
           const double *uNp1 = stk::mesh::field_data(velocityNp1, node );
+          const double *coords = stk::mesh::field_data(*coordinates_, node);
           for ( int i = 0; i < nDim; ++i ) {
             const int offSet = i*opposing_num_face_nodes + ni;        
             p_o_face_velocity[offSet] = uNp1[i];
+            p_o_coordinates[ni*nDim+i] = coords[i];
           }
         }
         
@@ -328,27 +336,23 @@ AssembleMomentumNonConformalSolverAlgorithm::execute()
           }
         }
 
+        // compute opposing normal through master element call, not using oppoing exposed area
+        meFCOpposing->general_normal(&opposingIsoParCoords[0], &p_o_coordinates[0], &p_oNx[0]);
+
         // pointer to face data
         const double * c_areaVec = stk::mesh::field_data(*exposedAreaVec_, currentFace);
-        const double * o_areaVec = stk::mesh::field_data(*exposedAreaVec_, opposingFace);
         const double * ncMassFlowRate = stk::mesh::field_data(*ncMassFlowRate_, currentFace);
         
         double c_amag = 0.0;
-        double o_amag = 0.0;
         for ( int j = 0; j < nDim; ++j ) {
           const double c_axj = c_areaVec[currentGaussPointId*nDim+j];
           c_amag += c_axj*c_axj;
-          // FIXME: choose first area vector on opposing surface? probably need something better for HO
-          const double o_axj = o_areaVec[0*nDim+j];
-          o_amag += o_axj*o_axj;
         }
         c_amag = std::sqrt(c_amag);
-        o_amag = std::sqrt(o_amag);
         
         // now compute normal
         for ( int i = 0; i < nDim; ++i ) {
           p_cNx[i] = c_areaVec[currentGaussPointId*nDim+i]/c_amag;
-          p_oNx[i] = o_areaVec[0*nDim+i]/o_amag;  
         }
 
         // override opposing normal
@@ -357,7 +361,7 @@ AssembleMomentumNonConformalSolverAlgorithm::execute()
             p_oNx[i] = -p_cNx[i];
         }
 
-        // project from side to element; method deals with the -1:1 isInElement range to the proper -0.5:0.5 CVFEM range
+        // project from side to element; method deals with the -1:1 isInElement range to the proper underlying CVFEM range
         meSCSCurrent->sidePcoords_to_elemPcoords(currentFaceOrdinal, 1, &currentIsoParCoords[0], &currentElementIsoParCoords[0]);
         meSCSOpposing->sidePcoords_to_elemPcoords(opposingFaceOrdinal, 1, &opposingIsoParCoords[0], &opposingElementIsoParCoords[0]);
 
@@ -481,6 +485,13 @@ AssembleMomentumNonConformalSolverAlgorithm::execute()
         for ( int p = 0; p < rhsSize; ++p )
           p_rhs[p] = 0.0;
 
+        // extract nearset node
+        const int nn = ipNodeMap[currentGaussPointId];
+        
+        // compute general shape function at current and opposing integration points
+        meFCCurrent->general_shape_fcn(1, &currentIsoParCoords[0], &ws_c_general_shape_function[0]);
+        meFCOpposing->general_shape_fcn(1, &opposingIsoParCoords[0], &ws_o_general_shape_function[0]);
+        
         // save mdot
         const double tmdot = ncMassFlowRate[currentGaussPointId];
 
@@ -500,7 +511,6 @@ AssembleMomentumNonConformalSolverAlgorithm::execute()
             : 0.5*tmdot*(currentUBip[i] + opposingUBip[i]);
 
           // assemble residual; form proper rhs index for current face assembly
-          const int nn = ws_c_face_node_ordinals[currentGaussPointId];
           const int indexR = nn*nDim + i;
           p_rhs[indexR] -= ((ncDiffFlux + penaltyIp*(currentUBip[i]-opposingUBip[i]))*c_amag + ncAdv);
 
@@ -509,7 +519,6 @@ AssembleMomentumNonConformalSolverAlgorithm::execute()
         
           // sensitivities; current face (penalty and advection); use general shape function for this single ip
           double lhsFac = penaltyIp*c_amag;
-          meFCCurrent->general_shape_fcn(1, &currentIsoParCoords[0], &ws_c_general_shape_function[0]);
           for ( int ic = 0; ic < currentNodesPerFace; ++ic ) {
             const int icNdim = ws_c_face_node_ordinals[ic]*nDim;
             const double r = p_c_general_shape_function[ic];
@@ -534,7 +543,6 @@ AssembleMomentumNonConformalSolverAlgorithm::execute()
           }
 
           // sensitivities; opposing face (penalty and advection); use general shape function for this single ip
-          meFCOpposing->general_shape_fcn(1, &opposingIsoParCoords[0], &ws_o_general_shape_function[0]);
           for ( int ic = 0; ic < opposingNodesPerFace; ++ic ) {
             const int icNdim = (ws_o_face_node_ordinals[ic]+currentNodesPerElement)*nDim;
             const double r = p_o_general_shape_function[ic];

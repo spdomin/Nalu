@@ -93,6 +93,8 @@ NonConformalInfo::NonConformalInfo(
     searchMethod_ = stk::search::BOOST_RTREE;
   else if ( searchMethodName == "stk_octree" )
     searchMethod_ = stk::search::OCTREE;
+  else if ( searchMethodName == "stk_kdtree" )
+    searchMethod_ = stk::search::KDTREE;
   else
     NaluEnv::self().naluOutputP0() << "NonConformalInfo::search method not declared; will use BOOST_RTREE" << std::endl;
 
@@ -223,8 +225,8 @@ NonConformalInfo::construct_dgInfo_state()
       stk::mesh::Entity const * face_node_rels = bulk_data.begin_nodes(face);
       const int num_face_nodes = bulk_data.num_nodes(face);
       
-      // sanity check on num nodes (low order, P=1, check)
-      ThrowAssert( num_face_nodes == numScsBip ); ThrowAssert( num_face_nodes == nodesPerFace );
+      // sanity check on num nodes
+      ThrowAssert( num_face_nodes == nodesPerFace );
       for ( int ni = 0; ni < num_face_nodes; ++ni ) {
         stk::mesh::Entity node = face_node_rels[ni];
         double * coords = stk::mesh::field_data(*coordinates, node);
@@ -328,9 +330,6 @@ NonConformalInfo::determine_elems_to_ghost()
       ThrowAssert( bulk_data.num_elements(face) == 1 );
       stk::mesh::Entity element = face_elem_rels[0];
           
-      // new element to ghost counter
-      realm_.nonConformalManager_->needToGhostCount_++;
-
       // deal with elements to push back to be ghosted; downward relations come for the ride...
       stk::mesh::EntityProc theElemPair(element, pt_proc);
       realm_.nonConformalManager_->elemsToGhost_.push_back(theElemPair);

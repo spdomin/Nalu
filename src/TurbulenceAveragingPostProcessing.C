@@ -71,61 +71,57 @@ TurbulenceAveragingPostProcessing::load(
   const YAML::Node & y_node)
 {
   // output for results
-  const YAML::Node *y_average = y_node.FindValue("turbulence_averaging");
+  const YAML::Node y_average = y_node["turbulence_averaging"];
   if (y_average) {    
-    get_if_present(*y_average, "forced_reset", forcedReset_, forcedReset_);
-    get_if_present(*y_average, "time_filter_interval", timeFilterInterval_, timeFilterInterval_);
+    get_if_present(y_average, "forced_reset", forcedReset_, forcedReset_);
+    get_if_present(y_average, "time_filter_interval", timeFilterInterval_, timeFilterInterval_);
 
     // extract the sequence of types
-    const YAML::Node *y_specs = expect_sequence(*y_average, "specifications", false);
+    const YAML::Node y_specs = expect_sequence(y_average, "specifications", false);
     if (y_specs) {
-      for (size_t ispec = 0; ispec < y_specs->size(); ++ispec) {
-        const YAML::Node &y_spec = (*y_specs)[ispec];
+      for (size_t ispec = 0; ispec < y_specs.size(); ++ispec) {
+        const YAML::Node &y_spec = (y_specs)[ispec];
         
         // new the info object
         AveragingInfo *avInfo = new AveragingInfo();
         
         // find the name
-        const YAML::Node *theName = y_spec.FindValue("name");
+        const YAML::Node theName = y_spec["name"];
         if ( theName )
-          *theName >> avInfo->name_;
+          avInfo->name_ = theName.as<std::string>() ;
         else
           throw std::runtime_error("TurbulenceAveragingPostProcessing: no name provided");  
         
         // extract the set of target names
-        const YAML::Node &targets = y_spec["target_name"];
+        const YAML::Node targets = y_spec["target_name"];
         if (targets.Type() == YAML::NodeType::Scalar) {
           avInfo->targetNames_.resize(1);
-          targets >> avInfo->targetNames_[0];
+          avInfo->targetNames_[0] = targets.as<std::string>() ;
         }
         else {
           avInfo->targetNames_.resize(targets.size());
           for (size_t i=0; i < targets.size(); ++i) {
-            targets[i] >> avInfo->targetNames_[i];
+            avInfo->targetNames_[i] = targets[i].as<std::string>() ;
           }
         }
  
         // reynolds
-        const YAML::Node *y_reynolds = y_spec.FindValue("reynolds_averaged_variables");
+        const YAML::Node y_reynolds = y_spec["reynolds_averaged_variables"];
         if (y_reynolds) {
-          size_t varSize = y_reynolds->size();
-          for (size_t ioption = 0; ioption < varSize; ++ioption) {
-            const YAML::Node & y_var = (*y_reynolds)[ioption];
-            std::string fieldName;
-            y_var >> fieldName;
+          for (size_t ioption = 0; ioption < y_reynolds.size(); ++ioption) {
+            const YAML::Node y_var = y_reynolds[ioption];
+            std::string fieldName = y_var.as<std::string>() ;
             if ( fieldName != "density" )
               avInfo->reynoldsFieldNameVec_.push_back(fieldName);
           }
         }
         
         // Favre
-        const YAML::Node *y_favre = y_spec.FindValue("favre_averaged_variables");
+        const YAML::Node y_favre = y_spec["favre_averaged_variables"];
         if (y_favre) {
-          size_t varSize = y_favre->size();
-          for (size_t ioption = 0; ioption < varSize; ++ioption) {
-            const YAML::Node & y_var = (*y_favre)[ioption];
-            std::string fieldName;
-            y_var >> fieldName;
+          for (size_t ioption = 0; ioption < y_favre.size(); ++ioption) {
+            const YAML::Node y_var = y_favre[ioption];
+            std::string fieldName = y_var.as<std::string>() ;
             if ( fieldName != "density")
               avInfo->favreFieldNameVec_.push_back(fieldName);
           } 
@@ -538,12 +534,16 @@ TurbulenceAveragingPostProcessing::execute()
       compute_lambda_ci(avInfo->name_, s_all_nodes);
     }
     
-    if ( avInfo->computeFavreStress_ ) {
-      compute_favre_stress(avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
-    }
-    
-    if ( avInfo->computeReynoldsStress_ ) {
-      compute_reynolds_stress(avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
+    // avoid computing stresses when when oldTimeFilter is not zero
+    // this will occur only on a first time step of a new simulation
+    if (oldTimeFilter > 0.0 ) {
+      if ( avInfo->computeFavreStress_ ) {
+        compute_favre_stress(avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
+      }
+      
+      if ( avInfo->computeReynoldsStress_ ) {
+        compute_reynolds_stress(avInfo->name_, oldTimeFilter, zeroCurrent, dt, s_all_nodes);
+      }
     }
   }
 }
@@ -641,11 +641,16 @@ TurbulenceAveragingPostProcessing::compute_reynolds_stress(
       for ( int i = 0; i < nDim; ++i ) {
         const double ui = uNp1[k*nDim+i];
         const double uiA = uNp1A[k*nDim+i];
+        double uiAOld = (currentTimeFilter_*uiA - ui*dt)/oldTimeFilter;
+
         for ( int j = i; j < nDim; ++j ) {
           const int component = componentCount;
           const double uj = uNp1[k*nDim+j];
           const double ujA = uNp1A[k*nDim+j];
-          const double newStress = (stress[k*stressSize+component]*oldTimeFilter*zeroCurrent + ui*uj*dt - uiA*ujA*dt)/currentTimeFilter_;
+          double ujAOld = (currentTimeFilter_*ujA - uj*dt)/oldTimeFilter;
+          const double newStress 
+            = ((stress[k*stressSize+component]+uiAOld*ujAOld)*oldTimeFilter*zeroCurrent 
+               + ui*uj*dt)/currentTimeFilter_ - uiA*ujA;
           stress[k*stressSize+component] = newStress;
           componentCount++;
         }
@@ -700,17 +705,28 @@ TurbulenceAveragingPostProcessing::compute_favre_stress(
       // save off density
       const double rhok = rho[k];
       const double rhoAk = rhoA[k];
+      const double rhoAOld = (currentTimeFilter_*rhoAk - rhok*dt)/oldTimeFilter;
+
+      // save off some ratios
+      const double rhoAOldByRhoA = rhoAOld/rhoAk;
+      const double rhoByRhoA = rhok/rhoAk;
 
       // stress is symmetric, so only save off 6 or 3 components
       int componentCount = 0;
       for ( int i = 0; i < nDim; ++i ) {
         const double ui = uNp1[k*nDim+i];
         const double uiA = uNp1A[k*nDim+i];
+        double uiAOld = (currentTimeFilter_*rhoAk*uiA - rhok*ui*dt)/oldTimeFilter/rhoAOld;
+
         for ( int j = i; j < nDim; ++j ) {
           const int component = componentCount;
           const double uj = uNp1[k*nDim+j];
           const double ujA = uNp1A[k*nDim+j];
-          const double newStress = (stress[k*stressSize+component]*oldTimeFilter*zeroCurrent + (ui*uj*rhok/rhoAk - uiA*ujA)*dt)/currentTimeFilter_;
+          double ujAOld = (currentTimeFilter_*rhoAk*ujA - rhok*uj*dt)/oldTimeFilter/rhoAOld;
+          
+          const double newStress 
+            = ((stress[k*stressSize+component] + uiAOld*ujAOld)*rhoAOldByRhoA*oldTimeFilter*zeroCurrent 
+               + rhoByRhoA*ui*uj*dt)/currentTimeFilter_ - uiA*ujA;
           stress[k*stressSize+component] = newStress;
           componentCount++;
         }

@@ -55,13 +55,6 @@ IF (ENABLE_INSTALL)
     SET (INSTALL_NALU TRUE)
 ENDIF()
 
-IF (INSTALL_NALU)
-  set(BINARY_INSTALL_DIR bin)
-  set(INCLUDE_INSTALL_DIR include)
-  set(LIB_INSTALL_DIR lib)
-  include(CMakePackageConfigHelpers)
-ENDIF ()
-
 MESSAGE("Setting and checking of compilers:")
 SET(CMAKE_CXX_COMPILER ${Trilinos_CXX_COMPILER} )
 SET(CMAKE_C_COMPILER ${Trilinos_C_COMPILER} )
@@ -98,14 +91,34 @@ add_library (nalu ${SOURCE} ${HEADER})
 target_link_libraries(nalu ${Trilinos_LIBRARIES})
 target_link_libraries(nalu ${YAML_LIBRARY})
 
+file (GLOB UNIT_TESTS_SOURCES unit_tests/*.C)
+
 set(nalu_ex_name "naluX")
 message("CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
 if (CMAKE_BUILD_TYPE STREQUAL "DEBUG")
    set (nalu_ex_name "naluXd")
-   add_definitions("-Wall" "-Werror")
+   add_definitions("-Wall")
    message("Debug Build")
 endif()
 
 add_executable(${nalu_ex_name} nalu.C)
 target_link_libraries(${nalu_ex_name} nalu)
+
+set(utest_ex_name "unittestX")
+if (CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+   set(utest_ex_name "unittestXd")
+endif()
+
+add_executable(${utest_ex_name} unit_tests.C ${UNIT_TESTS_SOURCES})
+target_link_libraries(${utest_ex_name} nalu)
+
+IF (INSTALL_NALU)
+  install(TARGETS ${utest_ex_name} ${nalu_ex_name} nalu
+          RUNTIME DESTINATION bin
+          ARCHIVE DESTINATION lib
+          LIBRARY DESTINATION lib)
+  install(DIRECTORY include/ DESTINATION include)
+  include(CMakePackageConfigHelpers)
+ENDIF ()
+
 MESSAGE("\nAnd CMake says...:")

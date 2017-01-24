@@ -22,26 +22,24 @@
 #include <AuxFunctionAlgorithm.h>
 #include <ComputeGeometryAlgorithmDriver.h>
 #include <ComputeGeometryBoundaryAlgorithm.h>
-#include <ComputeGeometryExtrusionBoundaryAlgorithm.h>
 #include <ComputeGeometryInteriorAlgorithm.h>
 #include <ConstantAuxFunction.h>
-#include <ContactInfo.h>
-#include <ContactManager.h>
 #include <Enums.h>
 #include <EquationSystem.h>
 #include <EquationSystems.h>
 #include <ErrorIndicatorAlgorithmDriver.h>
-#include <ExtrusionMeshDistanceBoundaryAlgorithm.h>
 #include <FieldTypeDef.h>
 #include <LinearSystem.h>
 #include <master_element/MasterElement.h>
 #include <MaterialPropertys.h>
+#include <MeshMotionInfo.h>
 #include <NaluParsing.h>
 #include <NonConformalManager.h>
 #include <NonConformalInfo.h>
 #include <OutputInfo.h>
 #include <PostProcessingInfo.h>
 #include <PostProcessingData.h>
+#include <PecletFunction.h>
 #include <PeriodicManager.h>
 #include <Realms.h>
 #include <SolutionOptions.h>
@@ -114,9 +112,6 @@
 #include <NaluParsing.h>
 #include <NaluParsingHelper.h>
 
-// boost
-#include <boost/lexical_cast.hpp>
-
 // basic c++
 #include <map>
 #include <cmath>
@@ -156,7 +151,6 @@ namespace nalu{
     resultsFileIndex_(99),
     restartFileIndex_(99),
     computeGeometryAlgDriver_(0),
-    extrusionMeshDistanceAlgDriver_(0),
     errorIndicatorAlgDriver_(0),
 #if defined (NALU_USES_PERCEPT)
     adapter_(0),
@@ -187,22 +181,21 @@ namespace nalu{
     timerPopulateFieldData_(0.0),
     timerOutputFields_(0.0),
     timerCreateEdges_(0.0),
-    timerContact_(0.0),
+    timerNonconformal_(0.0),
     timerInitializeEqs_(0.0),
     timerPropertyEval_(0.0),
     timerAdapt_(0.0),
     timerTransferSearch_(0.0),
     timerTransferExecute_(0.0),
     timerSkinMesh_(0.0),
-    contactManager_(NULL),
     nonConformalManager_(NULL),
     oversetManager_(NULL),
-    hasContact_(false),
     hasNonConformal_(false),
     hasOverset_(false),
     hasMultiPhysicsTransfer_(false),
     hasInitializationTransfer_(false),
     hasIoTransfer_(false),
+    hasExternalDataTransfer_(false),
     periodicManager_(NULL),
     hasPeriodic_(false),
     hasFluids_(false),
@@ -230,14 +223,11 @@ namespace nalu{
 //--------------------------------------------------------------------------
 Realm::~Realm()
 {
-
   delete bulkData_;
   delete metaData_;
   delete ioBroker_;
 
   delete computeGeometryAlgDriver_;
-  if ( NULL != extrusionMeshDistanceAlgDriver_ )
-    delete extrusionMeshDistanceAlgDriver_;
 
   if ( NULL != errorIndicatorAlgDriver_)
     delete errorIndicatorAlgDriver_;
@@ -282,10 +272,6 @@ Realm::~Realm()
 
   if ( NULL != turbulenceAveragingPostProcessing_ )
     delete turbulenceAveragingPostProcessing_;
-
-  // delete contact related things
-  if ( NULL != contactManager_ )
-    delete contactManager_;
 
   // delete non-conformal related things
   if ( NULL != nonConformalManager_ )
@@ -477,9 +463,6 @@ Realm::initialize()
 
   compute_geometry();
 
-  if ( hasContact_ )
-    initialize_contact();
-
   if ( hasNonConformal_ )
     initialize_non_conformal();
 
@@ -505,7 +488,7 @@ void
 Realm::look_ahead_and_creation(const YAML::Node & node)
 {
   // look for turbulence averaging
-  std::vector<const YAML::Node *> foundTurbAveraging;
+  std::vector<const YAML::Node*> foundTurbAveraging;
   NaluParsingHelper::find_nodes_given_key("turbulence_averaging", node, foundTurbAveraging);
   if ( foundTurbAveraging.size() > 0 ) {
     if ( foundTurbAveraging.size() != 1 )
@@ -514,7 +497,7 @@ Realm::look_ahead_and_creation(const YAML::Node & node)
   }
 
   // look for SolutionNormPostProcessing
-  std::vector<const YAML::Node *> foundNormPP;
+  std::vector<const YAML::Node*> foundNormPP;
   NaluParsingHelper::find_nodes_given_key("solution_norm", node, foundNormPP);
   if ( foundNormPP.size() > 0 ) {
     if ( foundNormPP.size() != 1 )
@@ -523,7 +506,7 @@ Realm::look_ahead_and_creation(const YAML::Node & node)
   }
 
   // look for DataProbe
-  std::vector<const YAML::Node *> foundProbe;
+  std::vector<const YAML::Node*> foundProbe;
   NaluParsingHelper::find_nodes_given_key("data_probes", node, foundProbe);
   if ( foundProbe.size() > 0 ) {
     if ( foundProbe.size() != 1 )
@@ -532,7 +515,7 @@ Realm::look_ahead_and_creation(const YAML::Node & node)
   }
 
   // look for ActuatorLine
-  std::vector<const YAML::Node *> foundActuatorLine;
+  std::vector<const YAML::Node*> foundActuatorLine;
   NaluParsingHelper::find_nodes_given_key("actuator_line", node, foundActuatorLine);
   if ( foundActuatorLine.size() > 0 ) {
     if ( foundActuatorLine.size() != 1 )
@@ -552,8 +535,8 @@ Realm::load(const YAML::Node & node)
   // realm commands first
   //======================================
 
-  node["name"] >> name_;
-  node["mesh"] >> inputDBName_;
+  name_ = node["name"].as<std::string>() ;
+  inputDBName_ = node["mesh"].as<std::string>() ;
   get_if_present(node, "type", type_, type_);
 
   // provide a high level banner
@@ -608,10 +591,10 @@ Realm::load(const YAML::Node & node)
 
   // time step control
   const bool dtOptional = true;
-  const YAML::Node *y_time_step = expect_map(node,"time_step_control", dtOptional);
+  const YAML::Node y_time_step = expect_map(node,"time_step_control", dtOptional);
   if ( y_time_step ) {
-    get_if_present(*y_time_step, "target_courant", targetCourant_, targetCourant_);
-    get_if_present(*y_time_step, "time_step_change_factor", timeStepChangeFactor_, timeStepChangeFactor_);
+    get_if_present(y_time_step, "target_courant", targetCourant_, targetCourant_);
+    get_if_present(y_time_step, "time_step_change_factor", timeStepChangeFactor_, timeStepChangeFactor_);
   }
 
   //======================================
@@ -844,9 +827,6 @@ Realm::setup_bc()
       case OPEN_BC:
         equationSystems_.register_open_bc(bc.targetName_, *reinterpret_cast<const OpenBoundaryConditionData *>(&bc));
         break;
-      case CONTACT_BC:
-        equationSystems_.register_contact_bc(bc.targetName_, *reinterpret_cast<const ContactBoundaryConditionData *>(&bc));
-        break;
       case SYMMETRY_BC:
         equationSystems_.register_symmetry_bc(bc.targetName_, *reinterpret_cast<const SymmetryBoundaryConditionData *>(&bc));
         break;
@@ -899,8 +879,30 @@ Realm::enforce_bc_on_exposed_faces()
       stk::mesh::Bucket & b = **ib ;
       const stk::mesh::Bucket::size_type length   = b.size();
       for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
-        // report offending set of faces; okay if to P0
-        NaluEnv::self().naluOutputP0() << "Face Id: " << bulkData_->identifier(b[k]) << " is not properly covered" << std::endl;
+        // extract the face
+        stk::mesh::Entity face = b[k];
+        
+        // report the offending face id
+        NaluEnv::self().naluOutput() << "Face Id: " << bulkData_->identifier(face) << " is not properly covered" << std::endl;
+      
+        // extract face nodes
+        const stk::mesh::Entity* face_node_rels = bulkData_->begin_nodes(face); 
+        const unsigned numberOfNodes = bulkData_->num_nodes(face);
+        NaluEnv::self().naluOutput() << " Number of nodes connected to this face is: " << numberOfNodes << std::endl;
+        for ( unsigned k = 0; k < numberOfNodes; ++k ) {
+          stk::mesh::Entity node = face_node_rels[k];
+          NaluEnv::self().naluOutput() << " attached node Id: " << bulkData_->identifier(node) << std::endl;
+        }
+      
+        // extract the element relations to report to the user and the number of elements connected
+        const stk::mesh::Entity* face_elem_rels = bulkData_->begin_elements(face);
+        const unsigned numberOfElems = bulkData_->num_elements(face);
+        NaluEnv::self().naluOutput() << " Number of elements connected to this face is: " << numberOfElems << std::endl;
+
+        for ( unsigned k = 0; k < numberOfElems; ++k ) {
+          stk::mesh::Entity element = face_elem_rels[k];
+          NaluEnv::self().naluOutput() << " attached element Id: " << bulkData_->identifier(element) << std::endl;
+        }
       }
     }
     throw std::runtime_error("Realm::Error: Please aply bc to problematic exposed surfaces ");
@@ -1673,10 +1675,6 @@ Realm::pre_timestep_work()
     process_mesh_motion();
     compute_geometry();
 
-    // check for contact
-    if ( hasContact_ )
-      initialize_contact();
-
     // and non-conformal algorithm
     if ( hasNonConformal_ )
       initialize_non_conformal();
@@ -2219,15 +2217,6 @@ Realm::delete_edges()
 }
 
 //--------------------------------------------------------------------------
-//-------- initialize_contact ----------------------------------------------
-//--------------------------------------------------------------------------
-void
-Realm::initialize_contact()
-{
-  contactManager_->initialize();
-}
-
-//--------------------------------------------------------------------------
 //-------- initialize_non_conformal ----------------------------------------
 //--------------------------------------------------------------------------
 void
@@ -2304,7 +2293,7 @@ Realm::does_mesh_move()
 bool
 Realm::has_non_matching_boundary_face_alg()
 {
-  return hasContact_ | hasNonConformal_ | hasOverset_; 
+  return hasNonConformal_ | hasOverset_; 
 }
 
 //--------------------------------------------------------------------------
@@ -2332,39 +2321,32 @@ Realm::query_for_overset()
 void
 Realm::process_mesh_motion()
 {
-  // extract parameters; allows for omega to change; save space for centroid
-  Coordinates centroidCoords;
+  // extract parameters; allows for omega to change
+  std::map<std::string, MeshMotionInfo *>::const_iterator iter;
+  for ( iter = solutionOptions_->meshMotionInfoMap_.begin();
+        iter != solutionOptions_->meshMotionInfoMap_.end(); ++iter) {
 
-  std::map<std::string, std::pair<std::vector<std::string>, double> >::const_iterator iter;
-  for ( iter = solutionOptions_->meshMotionMap_.begin();
-        iter != solutionOptions_->meshMotionMap_.end(); ++iter) {
+    // extract mesh info object
+    MeshMotionInfo *meshInfo = iter->second;
 
-    // extract key and pair
-    std::string theKey = iter->first;
-    std::pair<std::vector<std::string>, double> thePair = iter->second;
-    std::vector<std::string> theVector = thePair.first;
-    const double theOmega = thePair.second;
+    // mesh motion block, omega and centroid coordinates
+    const double theOmega = meshInfo->omega_;
+    std::vector<std::string> meshMotionBlock = meshInfo->meshMotionBlock_;
+    std::vector<double> unitVec = meshInfo->unitVec_;
+    std::vector<double> centroidCoords = meshInfo->centroid_;
 
-    // extract centroids; map matches by construction
-    std::map<std::string, Coordinates>::const_iterator iterFind;
-    iterFind = solutionOptions_->meshMotionCentroidMap_.find(theKey);
-    if ( iterFind != solutionOptions_->meshMotionCentroidMap_.end() )
-      centroidCoords = iterFind->second;
-    else 
-      throw std::runtime_error("Realm::process_mesh_motion() Error, could not find the centroid coordinates for " + theKey);      
-    
-    for (size_t k = 0; k < theVector.size(); ++k ) {
+    for (size_t k = 0; k < meshMotionBlock.size(); ++k ) {
       
-      stk::mesh::Part *targetPart = metaData_->get_part(theVector[k]);
+      stk::mesh::Part *targetPart = metaData_->get_part(meshMotionBlock[k]);
       
       if ( NULL == targetPart ) {
-        throw std::runtime_error("Realm::process_mesh_motion() Error Error, no part name found" + theVector[k]);
+        throw std::runtime_error("Realm::process_mesh_motion() Error Error, no part name found" + meshMotionBlock[k]);
       }
       else {
         set_omega(targetPart, theOmega);
-        set_current_displacement(targetPart, centroidCoords);
+        set_current_displacement(targetPart, centroidCoords, unitVec);
         set_current_coordinates(targetPart);
-        set_mesh_velocity(targetPart, centroidCoords);
+        set_mesh_velocity(targetPart, centroidCoords, unitVec);
       }
     }
   }
@@ -2378,8 +2360,10 @@ Realm::set_omega(
   stk::mesh::Part *targetPart,
   double scalarOmega)
 {
+  // deal with tanh blending
+  const double omegaBlend = get_tanh_blending("omega");
   ScalarFieldType *omega = metaData_->get_field<ScalarFieldType>(stk::topology::NODE_RANK, "omega");
-
+  
   stk::mesh::Selector s_all_nodes = stk::mesh::Selector(*targetPart);
 
   stk::mesh::BucketVector const& node_buckets = bulkData_->get_buckets( stk::topology::NODE_RANK, s_all_nodes );
@@ -2389,7 +2373,7 @@ Realm::set_omega(
     const stk::mesh::Bucket::size_type length   = b.size();
     double * bigO = stk::mesh::field_data(*omega, b);
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
-      bigO[k] = scalarOmega;
+      bigO[k] = scalarOmega*omegaBlend;
     }
   }
 }
@@ -2400,10 +2384,15 @@ Realm::set_omega(
 void
 Realm::set_current_displacement(
   stk::mesh::Part *targetPart,
-  Coordinates centroidCoords)
+  const std::vector<double> &centroidCoords,
+  const std::vector<double> &unitVec)
 {
   const int nDim = metaData_->spatial_dimension();
   const double currentTime = get_current_time();
+
+  // local space; Nalu current coords and rotated coords; generalized for 2D and 3D
+  double mcX[3] = {0.0,0.0,0.0};
+  double rcX[3] = {0.0,0.0,0.0};
 
   VectorFieldType *modelCoords = metaData_->get_field<VectorFieldType>(stk::topology::NODE_RANK, "coordinates");
   VectorFieldType *displacement = metaData_->get_field<VectorFieldType>(stk::topology::NODE_RANK, "mesh_displacement");
@@ -2425,15 +2414,34 @@ Realm::set_current_displacement(
       // extract omega
       const double theO = bigO[k];
 
-      const int offSet = k*nDim;
-      // hacked for 2D
-      const double modelX = mCoords[offSet];
-      const double modelY = mCoords[offSet+1];
-      const double centroidX = centroidCoords.x_;
-      const double centroidY = centroidCoords.y_;
+      const int kNdim = k*nDim;
+    
+      // load the current and model coords
+      for ( int i = 0; i < nDim; ++i ) {
+        mcX[i] = mCoords[kNdim+i];
+      }
+
+      const double cX = mcX[0] - centroidCoords[0];
+      const double cY = mcX[1] - centroidCoords[1];
+      const double cZ = mcX[2] - centroidCoords[2];
+
+      const double sinOTby2 = sin(theO*currentTime*0.5);
+      const double cosOTby2 = cos(theO*currentTime*0.5);
       
-      dx[offSet] = cos(theO*currentTime)*(modelX-centroidX) - sin(theO*currentTime)*(modelY-centroidY) + (centroidX-modelX);
-      dx[offSet+1] = sin(theO*currentTime)*(modelX-centroidX) + cos(theO*currentTime)*(modelY-centroidY) + (centroidY-modelY);
+      const double q0 = cosOTby2;
+      const double q1 = sinOTby2*unitVec[0];
+      const double q2 = sinOTby2*unitVec[1];
+      const double q3 = sinOTby2*unitVec[2];    
+      
+      // rotated model coordinates; converted to displacement; add back in centroid
+      rcX[0] = (q0*q0 + q1*q1 - q2*q2 - q3*q3)*cX + 2.0*(q1*q2 - q0*q3)*cY + 2.0*(q0*q2 + q1*q3)*cZ - mcX[0] + centroidCoords[0];
+      rcX[1] = 2.0*(q1*q2 + q0*q3)*cX + (q0*q0 - q1*q1 + q2*q2 - q3*q3)*cY + 2.0*(q2*q3 - q0*q1)*cZ - mcX[1] + centroidCoords[1];
+      rcX[2] = 2.0*(q1*q3 - q0*q2)*cX + 2.0*(q0*q1 + q2*q3)*cY + (q0*q0 - q1*q1 - q2*q2 + q3*q3)*cZ - mcX[2] + centroidCoords[2];
+      
+      // set displacement
+      for ( int i = 0; i < nDim; ++i ) {
+        dx[kNdim+i] = rcX[i];
+      }
     }
   }
 }
@@ -2475,10 +2483,17 @@ Realm::set_current_coordinates(
 void
 Realm::set_mesh_velocity(
   stk::mesh::Part *targetPart,
-  Coordinates centroidCoords)
+  const std::vector<double> &centroidCoords,
+  const std::vector<double> &unitVec)
 {
   const int nDim = metaData_->spatial_dimension();
 
+  // local space; omega*normal, coords, velocity and Nalu current coords
+  double oX[3] = {0.0,0.0,0.0};
+  double cX[3] = {0.0,0.0,0.0};
+  double uX[3] = {0.0,0.0,0.0};
+  double ccX[3] = {0.0,0.0,0.0};
+  
   VectorFieldType *currentCoords = metaData_->get_field<VectorFieldType>(stk::topology::NODE_RANK, "current_coordinates");
   VectorFieldType *meshVelocity = metaData_->get_field<VectorFieldType>(stk::topology::NODE_RANK, "mesh_velocity");
   ScalarFieldType *omega = metaData_->get_field<ScalarFieldType>(stk::topology::NODE_RANK, "omega");
@@ -2496,14 +2511,38 @@ Realm::set_mesh_velocity(
     for ( stk::mesh::Bucket::size_type k = 0 ; k < length ; ++k ) {
       const int offSet = k*nDim;
 
-      // hacked for 2D
-      const double cX = cCoords[offSet] - centroidCoords.x_;
-      const double cY = cCoords[offSet+1] - centroidCoords.y_;
+      // define distance from centroid and compute cross product
       const double theO = bigO[k];
-      vnp1[offSet] =  -theO*cY;
-      vnp1[offSet+1] = theO*cX;
+
+      // load the current coords
+      for ( int i = 0; i < nDim; ++i ) {
+        ccX[i] = cCoords[offSet+i];    
+      }
+      
+      // compute relative coords and vector omega (dimension 3) for general cross product
+      for ( unsigned i = 0; i < 3; ++i ) {
+        cX[i] = ccX[i] - centroidCoords[i];    
+        oX[i] = theO*unitVec[i];
+      }
+      
+      mesh_velocity_cross_product(oX, cX, uX);
+      
+      for ( int i = 0; i < nDim; ++i ) {
+        vnp1[offSet+i] =  uX[i];
+      }
     }
   }
+}
+
+//--------------------------------------------------------------------------
+//-------- mesh_velocity_cross_product -------------------------------------
+//--------------------------------------------------------------------------
+void
+Realm::mesh_velocity_cross_product(double *o, double *c, double *u)
+{
+  u[0] = o[1]*c[2] - o[2]*c[1];
+  u[1] = o[2]*c[0] - o[0]*c[2];
+  u[2] = o[0]*c[1] - o[1]*c[0];
 }
 
 //--------------------------------------------------------------------------
@@ -2512,9 +2551,7 @@ Realm::set_mesh_velocity(
 void
 Realm::compute_geometry()
 {
-  // perform extrusion of mesh
-  if ( hasContact_ )
-    extrusionMeshDistanceAlgDriver_->execute();
+  // interior and boundary
   computeGeometryAlgDriver_->execute();
 
   // find total volume if the mesh moves at all
@@ -2697,7 +2734,6 @@ Realm::register_nodal_fields(
   }
 }
 
-
 //--------------------------------------------------------------------------
 //-------- register_interior_algorithm -------------------------------------
 //--------------------------------------------------------------------------
@@ -2849,155 +2885,6 @@ Realm::register_open_bc(
 }
 
 //--------------------------------------------------------------------------
-//-------- register_contact_bc ---------------------------------------------
-//--------------------------------------------------------------------------
-void
-Realm::register_contact_bc(
-  stk::mesh::Part *part,
-  const stk::topology &theTopo,
-  const ContactBoundaryConditionData &contactBCData)
-{
-
-  // push back the part for book keeping and, later, skin mesh
-  bcPartVec_.push_back(part);
-
-  const AlgorithmType algType = CONTACT;
-
-  hasContact_ = true;
-
-  if ( NULL == extrusionMeshDistanceAlgDriver_ )
-    extrusionMeshDistanceAlgDriver_ = new AlgorithmDriver(*this);
-
-  //====================================================
-  // Register boundary condition data
-  //====================================================
-
-  const int nDim = metaData_->spatial_dimension();
-
-  // register fields
-  MasterElement *meFC = get_surface_master_element(theTopo);
-  const int numScsIp = meFC->numIntPoints_;
-
-  // exposed area vector
-  GenericFieldType *exposedAreaVec_
-    = &(metaData_->declare_field<GenericFieldType>(static_cast<stk::topology::rank_t>(metaData_->side_rank()), "exposed_area_vector"));
-  stk::mesh::put_field(*exposedAreaVec_, *part, nDim*numScsIp );
-
-  // register nodal field that will hold important information
-  VectorFieldType *haloNormal =  &(metaData_->declare_field<VectorFieldType>(stk::topology::NODE_RANK, "halo_normal"));
-  stk::mesh::put_field(*haloNormal, *part, nDim);
-  VectorFieldType *haloDxj =  &(metaData_->declare_field<VectorFieldType>(stk::topology::NODE_RANK, "halo_dxj"));
-  stk::mesh::put_field(*haloDxj, *part, nDim);
-  ScalarFieldType *extDistance = &(metaData_->declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "extrusion_distance"));
-  stk::mesh::put_field(*extDistance, *part);
-
-  // correction for extrusion distance (for non-planar surfaces)
-  ScalarFieldType *extDistanceCorrFac 
-    = &(metaData_->declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "extrusion_distance_correct_fac"));
-  stk::mesh::put_field(*extDistanceCorrFac, *part);
-  ScalarFieldType *extDistanceCorrCount 
-    = &(metaData_->declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "extrusion_distance_correct_count"));
-  stk::mesh::put_field(*extDistanceCorrCount, *part);
-
-  if ( realmUsesEdges_ ) {
-    // need some extra nodal data for edge-based
-    ScalarFieldType *haloMdot =  &(metaData_->declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "halo_mdot"));
-    stk::mesh::put_field(*haloMdot, *part);
-
-    VectorFieldType *haloAxj =  &(metaData_->declare_field<VectorFieldType>(stk::topology::NODE_RANK, "halo_axj"));
-    stk::mesh::put_field(*haloAxj, *part, nDim);
-  }
-  else {
-    throw std::runtime_error("Element-based scheme not supported with contact bc");
-  }
-
-  // extract data
-  ContactUserData userData = contactBCData.userData_;
-
-  // extract params useful for search
-  const double maxSearchRadius = userData.maxSearchRadius_;
-  const double minSearchRadius = userData.minSearchRadius_;
-  const double extrusionDistance = userData.extrusionDistance_;
-  const std::string searchMethodName = userData.searchMethodName_;
-  const double expandBoxPercentage = userData.expandBoxPercentage_/100.0;
-  const bool clipIsoParametricCoords = userData.clipIsoParametricCoords_;
-
-  // what type of interpolation?
-  const bool useHermiteInterp = userData.useHermiteInterpolation_;
-
-  // some output for the user
-  NaluEnv::self().naluOutputP0() << "extrusion alg active with distance " << extrusionDistance << std::endl;
-  NaluEnv::self().naluOutputP0() << "min/max radius " << minSearchRadius << " " << maxSearchRadius << std::endl;
-  NaluEnv::self().naluOutputP0() << "search block name: " << std::endl;
-  for ( size_t k = 0; k < userData.searchBlock_.size(); ++k )
-    NaluEnv::self().naluOutputP0() << userData.searchBlock_[k] << std::endl;
-
-  // create manager
-  if ( NULL == contactManager_ ) {
-    contactManager_ = new ContactManager(*this);
-  }
-
-  // create contact info for this surface
-  ContactInfo *contactInfo
-    = new ContactInfo(*this,
-                      part->name(),
-                      maxSearchRadius,
-                      minSearchRadius,
-                      userData.searchBlock_,
-                      expandBoxPercentage,
-                      part,
-                      searchMethodName,
-                      clipIsoParametricCoords,
-                      useHermiteInterp);
-
-
-  contactManager_->contactInfoVec_.push_back(contactInfo);
-
-  //====================================================
-  // Register contact algorithms
-  //====================================================
-
-  // handle boundary data; for now this is constant extrusion distance (with non-planar correction)
-  std::vector<double> userSpecBc(1);
-  userSpecBc[0] = extrusionDistance;
-  ConstantAuxFunction *theAuxFuncBc = new ConstantAuxFunction(0, 1, userSpecBc);
-
-  // bc data alg
-  AuxFunctionAlgorithm *auxAlgBc
-    = new AuxFunctionAlgorithm(*this, part,
-                               extDistance, theAuxFuncBc,
-                               stk::topology::NODE_RANK);
-  bcDataAlg_.push_back(auxAlgBc);
-
-  // ExtrusionMeshDistanceBoundaryAlgorithm handles exposed area vector
-  std::map<AlgorithmType, Algorithm *>::iterator it
-    = extrusionMeshDistanceAlgDriver_->algMap_.find(algType);
-  if ( it == extrusionMeshDistanceAlgDriver_->algMap_.end() ) {
-    ExtrusionMeshDistanceBoundaryAlgorithm *theAlg
-      = new ExtrusionMeshDistanceBoundaryAlgorithm(*this, part );
-    extrusionMeshDistanceAlgDriver_->algMap_[algType] = theAlg;
-  }
-  else {
-    it->second->partVec_.push_back(part);
-  }
-
-  // extruded mesh (volume and area vector)
-  if ( realmUsesEdges_ ) {
-    std::map<AlgorithmType, Algorithm *>::iterator itext
-      = computeGeometryAlgDriver_->algMap_.find(algType);
-    if ( itext == computeGeometryAlgDriver_->algMap_.end() ) {
-      ComputeGeometryExtrusionBoundaryAlgorithm *theAlg
-        = new ComputeGeometryExtrusionBoundaryAlgorithm(*this, part);
-      computeGeometryAlgDriver_->algMap_[algType] = theAlg;
-    }
-    else {
-      itext->second->partVec_.push_back(part);
-    }
-  }
-
-}
-
-//--------------------------------------------------------------------------
 //-------- register_symmetry_bc --------------------------------------------
 //--------------------------------------------------------------------------
 void
@@ -3092,7 +2979,7 @@ Realm::setup_non_conformal_bc(
     nonConformalManager_ = new NonConformalManager(*this, ncAlgDetailedOutput);
   }
    
-  // create contact info for this surface
+  // create nonconformal info for this surface
   NonConformalInfo *nonConformalInfo
     = new NonConformalInfo(*this,
                            currentPart,
@@ -3272,6 +3159,8 @@ Realm::provide_output()
       = (timeStepCount >=outputInfo_->outputStart_ && modStep % outputInfo_->outputFreq_ == 0) || forcedOutput;
 
     if ( isOutput ) {
+      NaluEnv::self().naluOutputP0() << "Realm shall provide output files at : currentTime/timeStepCount: "
+                                     << currentTime << "/" <<  timeStepCount << " (" << name_ << ")" << std::endl;      
       // when adaptivity has occurred, re-create the output mesh file
       if (outputInfo_->meshAdapted_)
         create_output_mesh();
@@ -3333,7 +3222,8 @@ Realm::provide_restart_output()
       = (timeStepCount >= outputInfo_->restartStart_ && modStep % outputInfo_->restartFreq_ == 0) || forcedOutput;
     
     if ( isRestartOutputStep ) {
-
+      NaluEnv::self().naluOutputP0() << "Realm shall provide restart files at: currentTime/timeStepCount: "
+                                     << currentTime << "/" <<  timeStepCount << " (" << name_ << ")" << std::endl;      
       // handle fields
       ioBroker_->begin_output_step(restartFileIndex_, currentTime);
       ioBroker_->write_defined_output_fields(restartFileIndex_);
@@ -3484,6 +3374,8 @@ Realm::populate_derived_quantities()
 void
 Realm::initial_work()
 {
+  if ( solutionOptions_->meshMotion_ )
+    process_mesh_motion();
   equationSystems_.initial_work();
 }
 
@@ -3501,11 +3393,11 @@ Realm::set_global_id()
     const stk::mesh::Bucket & b = **ib;
     const stk::mesh::Bucket::size_type length = b.size();
     stk::mesh::EntityId *naluGlobalIds = stk::mesh::field_data(*naluGlobalId_, b);
-
+    
     for ( stk::mesh::Bucket::size_type k = 0; k < length; ++k ) {
       naluGlobalIds[k] = bulkData_->identifier(b[k]);
     }
-  }
+  }  
 }
 
 //--------------------------------------------------------------------------
@@ -3682,21 +3574,20 @@ Realm::dump_simulation_time()
                      << " \tmin: " << g_minPeriodicSearchTime << " \tmax: " << g_maxPeriodicSearchTime << std::endl;
   }
 
-  // contact
-  if ( hasContact_ ) {
-    double g_totalContact = 0.0, g_minContact= 0.0, g_maxContact = 0.0;
-    stk::all_reduce_min(NaluEnv::self().parallel_comm(), &timerContact_, &g_minContact, 1);
-    stk::all_reduce_max(NaluEnv::self().parallel_comm(), &timerContact_, &g_maxContact, 1);
-    stk::all_reduce_sum(NaluEnv::self().parallel_comm(), &timerContact_, &g_totalContact, 1);
+  // nonconformal
+  if ( has_non_matching_boundary_face_alg() ) {
+    double g_totalNonconformal = 0.0, g_minNonconformal= 0.0, g_maxNonconformal = 0.0;
+    stk::all_reduce_min(NaluEnv::self().parallel_comm(), &timerNonconformal_, &g_minNonconformal, 1);
+    stk::all_reduce_max(NaluEnv::self().parallel_comm(), &timerNonconformal_, &g_maxNonconformal, 1);
+    stk::all_reduce_sum(NaluEnv::self().parallel_comm(), &timerNonconformal_, &g_totalNonconformal, 1);
 
-    NaluEnv::self().naluOutputP0() << "Timing for Contact: " << std::endl;
-    NaluEnv::self().naluOutputP0() << "       contact bc --  " << " \tavg: " << g_totalContact/double(nprocs)
-                    << " \tmin: " << g_minContact << " \tmax: " << g_maxContact << std::endl;
+    NaluEnv::self().naluOutputP0() << "Timing for Nonconformal: " << std::endl;
+    NaluEnv::self().naluOutputP0() << "  nonconformal bc --  " << " \tavg: " << g_totalNonconformal/double(nprocs)
+                                   << " \tmin: " << g_minNonconformal << " \tmax: " << g_maxNonconformal << std::endl;
   }
 
   // transfer
-  if ( hasMultiPhysicsTransfer_ || hasInitializationTransfer_ || hasIoTransfer_ ) {
-    
+  if ( hasMultiPhysicsTransfer_ || hasInitializationTransfer_ || hasIoTransfer_ || hasExternalDataTransfer_ ) {
     double totalXfer[2] = {timerTransferSearch_, timerTransferExecute_};
     double g_totalXfer[2] = {}, g_minXfer[2] = {}, g_maxXfer[2] = {};
     stk::all_reduce_min(NaluEnv::self().parallel_comm(), &totalXfer[0], &g_minXfer[0], 2);
@@ -3747,47 +3638,10 @@ Realm::get_volume_master_element(
     volumeMeMap_.find(theTopo);
   if ( it == volumeMeMap_.end() ) {
     // not found; will need to create it and add it
-    switch ( theTopo.value() ) {
-
-      case stk::topology::HEX_8:
-        theElem = new HexSCV();
-        break;
-
-      case stk::topology::HEX_27:
-        theElem = new Hex27SCV();
-        break;
-
-      case stk::topology::TET_4:
-        theElem = new TetSCV();
-        break;
-
-      case stk::topology::PYRAMID_5:
-        theElem = new PyrSCV();
-        break;
-
-      case stk::topology::WEDGE_6:
-        theElem = new WedSCV();
-        break;
-
-      case stk::topology::QUAD_4_2D:
-        theElem = new Quad2DSCV();
-        break;
-
-      case stk::topology::QUAD_9_2D:
-        theElem = new Quad92DSCV();
-        break;
-
-      case stk::topology::TRI_3_2D:
-        theElem = new Tri2DSCV();
-        break;
-
-      default:
-        NaluEnv::self().naluOutputP0() << "sorry, we only support hex8, tet4, wed6, pyr5, quad4, and tri3 volume elements" << std::endl;
-        break;
-    }
+    theElem = MasterElement::create_volume_master_element(theTopo);
+    ThrowRequire(theElem != nullptr);
 
     volumeMeMap_[theTopo] = theElem;
-
   }
   else {
     // found it
@@ -3811,69 +3665,10 @@ Realm::get_surface_master_element(
     surfaceMeMap_.find(theTopo);
   if ( it == surfaceMeMap_.end() ) {
     // not found; will need to create it and add it
-    switch ( theTopo.value() ) {
-
-      case stk::topology::HEX_8:
-        theElem = new HexSCS();
-        break;
-
-      case stk::topology::HEX_27:
-        theElem = new Hex27SCS();
-        break;
-
-      case stk::topology::TET_4:
-        theElem = new TetSCS();
-        break;
-
-      case stk::topology::PYRAMID_5:
-        theElem = new PyrSCS();
-        break;
-
-      case stk::topology::WEDGE_6:
-        theElem = new WedSCS();
-        break;
-
-      case stk::topology::QUAD_4:
-        theElem =  new Quad3DSCS();
-        break;
-
-      case stk::topology::QUAD_9:
-        theElem =  new Quad93DSCS();
-        break;
-
-      case stk::topology::TRI_3:
-        theElem = new Tri3DSCS();
-        break;
-
-      case stk::topology::QUAD_4_2D:
-        theElem =  new Quad2DSCS();
-        break;
-
-      case stk::topology::QUAD_9_2D:
-        theElem =  new Quad92DSCS();
-        break;
-
-      case stk::topology::TRI_3_2D:
-        theElem = new Tri2DSCS();
-        break;
-
-      case stk::topology::LINE_2:
-        theElem = new Edge2DSCS();
-        break;
-
-      case stk::topology::LINE_3:
-        theElem = new Edge32DSCS();
-        break;
-
-      default:
-        NaluEnv::self().naluOutputP0() << "sorry, we only support hex8, tet4, pyr5, wed6, quad2d, quad3d, tri2d, tri3d and edge2d surface elements" << std::endl;
-        NaluEnv::self().naluOutputP0() << "you're type is " << theTopo.value() << std::endl;
-        break;
-
-    }
+    theElem = MasterElement::create_surface_master_element(theTopo);
+    ThrowRequire(theElem != nullptr);
 
     surfaceMeMap_[theTopo] = theElem;
-
   }
 
   else {
@@ -4050,48 +3845,48 @@ Realm::get_noc_usage(
 }
 
 //--------------------------------------------------------------------------
-//-------- get_peclet_functional_form --------------------------------------
+//-------- get_tanh_functional_form ----------------------------------------
 //--------------------------------------------------------------------------
 std::string
-Realm::get_peclet_functional_form(
+Realm::get_tanh_functional_form(
   const std::string dofName )
 {
-  std::string pecletForm = solutionOptions_->pecletFunctionalFormDefault_;
+  std::string tanhForm = solutionOptions_->tanhFormDefault_;
   std::map<std::string, std::string>::const_iterator iter
-    = solutionOptions_->pecletFunctionalFormMap_.find(dofName);
-  if (iter != solutionOptions_->pecletFunctionalFormMap_.end()) {
-    pecletForm = (*iter).second;
+    = solutionOptions_->tanhFormMap_.find(dofName);
+  if (iter != solutionOptions_->tanhFormMap_.end()) {
+    tanhForm = (*iter).second;
   }
-  return pecletForm;
+  return tanhForm;
 }
 
 //--------------------------------------------------------------------------
-//-------- get_peclet_tanh_trans -------------------------------------------
+//-------- get_tanh_trans --------------------------------------------------
 //--------------------------------------------------------------------------
 double
-Realm::get_peclet_tanh_trans(
+Realm::get_tanh_trans(
   const std::string dofName )
 {
-  double tanhTrans = solutionOptions_->pecletTanhTransDefault_;
+  double tanhTrans = solutionOptions_->tanhTransDefault_;
   std::map<std::string, double>::const_iterator iter
-    = solutionOptions_->pecletFunctionTanhTransMap_.find(dofName);
-  if (iter != solutionOptions_->pecletFunctionTanhTransMap_.end()) {
+    = solutionOptions_->tanhTransMap_.find(dofName);
+  if (iter != solutionOptions_->tanhTransMap_.end()) {
     tanhTrans = (*iter).second;
   }
   return tanhTrans;
 }
 
 //--------------------------------------------------------------------------
-//-------- get_peclet_tanh_width -------------------------------------------
+//-------- get_tanh_width --------------------------------------------------
 //--------------------------------------------------------------------------
 double
-Realm::get_peclet_tanh_width(
+Realm::get_tanh_width(
   const std::string dofName )
 {
-  double tanhWidth = solutionOptions_->pecletTanhWidthDefault_;
+  double tanhWidth = solutionOptions_->tanhWidthDefault_;
   std::map<std::string, double>::const_iterator iter
-    = solutionOptions_->pecletFunctionTanhWidthMap_.find(dofName);
-  if (iter != solutionOptions_->pecletFunctionTanhWidthMap_.end()) {
+    = solutionOptions_->tanhWidthMap_.find(dofName);
+  if (iter != solutionOptions_->tanhWidthMap_.end()) {
     tanhWidth = (*iter).second;
   }
   return tanhWidth;
@@ -4293,6 +4088,10 @@ Realm::augment_transfer_vector(Transfer *transfer, const std::string transferObj
     toRealm->ioTransferVec_.push_back(transfer);
     toRealm->hasIoTransfer_ = true;
   }
+  else if ( transferObjective == "external_data" ) {
+    toRealm->externalDataTransferVec_.push_back(transfer);
+    toRealm->hasExternalDataTransfer_ = true;
+  }
   else { 
     throw std::runtime_error("Real::augment_transfer_vector: Error, none supported transfer objective: " + transferObjective);
   }
@@ -4351,6 +4150,23 @@ Realm::process_io_transfer()
     for( ii=ioTransferVec_.begin(); ii!=ioTransferVec_.end(); ++ii )
       (*ii)->execute();
   }
+  timeXfer += NaluEnv::self().nalu_time();
+  timerTransferExecute_ += timeXfer;
+}
+
+//--------------------------------------------------------------------------
+//-------- process_external_data_transfer ----------------------------------
+//--------------------------------------------------------------------------
+void
+Realm::process_external_data_transfer()
+{
+  if ( !hasExternalDataTransfer_ )
+    return;
+
+  double timeXfer = -NaluEnv::self().nalu_time();
+  std::vector<Transfer *>::iterator ii;
+  for( ii=externalDataTransferVec_.begin(); ii!=externalDataTransferVec_.end(); ++ii )
+    (*ii)->execute();
   timeXfer += NaluEnv::self().nalu_time();
   timerTransferExecute_ += timeXfer;
 }
@@ -4577,6 +4393,25 @@ Realm::get_physics_target_names()
   // in the future, possibly check for more advanced names;
   // for now, material props holds this
   return materialPropertys_.targetNames_;
+}
+
+//--------------------------------------------------------------------------
+//-------- get_tanh_blending() ---------------------------------------------
+//--------------------------------------------------------------------------
+double
+Realm::get_tanh_blending(
+ const std::string dofName)
+{
+  // assumes interval starts at a = 0 and ends at b = 1
+  double omegaBlend = 1.0;
+  if ( get_tanh_functional_form(dofName) == "tanh" ) {
+    const double c1 = get_tanh_trans(dofName);
+    const double c2 = get_tanh_width(dofName);
+    TanhFunction tanhFunction(c1,c2);
+    const double currentTime = get_current_time();
+    omegaBlend = tanhFunction.execute(currentTime);
+  }
+  return omegaBlend;
 }
 
 } // namespace nalu

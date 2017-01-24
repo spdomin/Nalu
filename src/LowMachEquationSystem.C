@@ -12,48 +12,41 @@
 #include <AssembleContinuityEdgeSolverAlgorithm.h>
 #include <AssembleContinuityElemSolverAlgorithm.h>
 #include <AssembleContinuityInflowSolverAlgorithm.h>
-#include <AssembleContinuityEdgeContactSolverAlgorithm.h>
 #include <AssembleContinuityEdgeOpenSolverAlgorithm.h>
 #include <AssembleContinuityElemOpenSolverAlgorithm.h>
 #include <AssembleContinuityNonConformalSolverAlgorithm.h>
 #include <AssembleMomentumEdgeSolverAlgorithm.h>
 #include <AssembleMomentumElemSolverAlgorithm.h>
-#include <AssembleMomentumEdgeContactSolverAlgorithm.h>
 #include <AssembleMomentumEdgeOpenSolverAlgorithm.h>
 #include <AssembleMomentumElemOpenSolverAlgorithm.h>
 #include <AssembleMomentumEdgeSymmetrySolverAlgorithm.h>
 #include <AssembleMomentumElemSymmetrySolverAlgorithm.h>
 #include <AssembleMomentumWallFunctionSolverAlgorithm.h>
+#include <AssembleMomentumABLWallFunctionSolverAlgorithm.h>
 #include <AssembleMomentumNonConformalSolverAlgorithm.h>
 #include <AssembleElemSolverAlgorithm.h>
 #include <AssembleNodalGradAlgorithmDriver.h>
 #include <AssembleNodalGradEdgeAlgorithm.h>
 #include <AssembleNodalGradElemAlgorithm.h>
 #include <AssembleNodalGradBoundaryAlgorithm.h>
-#include <AssembleNodalGradEdgeContactAlgorithm.h>
-#include <AssembleNodalGradElemContactAlgorithm.h>
 #include <AssembleNodalGradNonConformalAlgorithm.h>
 #include <AssembleNodalGradUAlgorithmDriver.h>
 #include <AssembleNodalGradUEdgeAlgorithm.h>
 #include <AssembleNodalGradUElemAlgorithm.h>
 #include <AssembleNodalGradUBoundaryAlgorithm.h>
-#include <AssembleNodalGradUEdgeContactAlgorithm.h>
-#include <AssembleNodalGradUElemContactAlgorithm.h>
 #include <AssembleNodalGradUNonConformalAlgorithm.h>
 #include <AssembleNodeSolverAlgorithm.h>
 #include <AuxFunctionAlgorithm.h>
 #include <ComputeMdotEdgeAlgorithm.h>
 #include <ComputeMdotElemAlgorithm.h>
-#include <ComputeMdotEdgeContactAlgorithm.h>
 #include <ComputeMdotEdgeOpenAlgorithm.h>
 #include <ComputeMdotElemOpenAlgorithm.h>
 #include <ComputeMdotNonConformalAlgorithm.h>
 #include <ComputeWallFrictionVelocityAlgorithm.h>
+#include <ComputeABLWallFrictionVelocityAlgorithm.h>
 #include <ConstantAuxFunction.h>
-#include <ContactInfo.h>
 #include <ContinuityGclNodeSuppAlg.h>
 #include <ContinuityLowSpeedCompressibleNodeSuppAlg.h>
-#include <ContactManager.h>
 #include <ContinuityMassBackwardEulerNodeSuppAlg.h>
 #include <ContinuityMassBDF2NodeSuppAlg.h>
 #include <ContinuityMassElemSuppAlg.h>
@@ -65,7 +58,6 @@
 #include <EquationSystem.h>
 #include <EquationSystems.h>
 #include <ErrorIndicatorAlgorithmDriver.h>
-#include <HaloInfo.h>
 #include <FieldFunctions.h>
 #include <LinearSolver.h>
 #include <LinearSolvers.h>
@@ -76,13 +68,11 @@
 #include <MomentumBuoyancySrcElemSuppAlg.h>
 #include <MomentumBoussinesqSrcNodeSuppAlg.h>
 #include <MomentumBodyForceSrcNodeSuppAlg.h>
+#include <MomentumCoriolisSrcNodeSuppAlg.h>
 #include <MomentumGclSrcNodeSuppAlg.h>
 #include <MomentumMassBackwardEulerNodeSuppAlg.h>
 #include <MomentumMassBDF2NodeSuppAlg.h>
 #include <MomentumMassElemSuppAlg.h>
-#include <MomentumKeNSOElemSuppAlg.h>
-#include <MomentumNSOElemSuppAlg.h>
-#include <MomentumNSOGradElemSuppAlg.h>
 #include <MomentumAdvDiffElemSuppAlg.h>
 #include <NaluEnv.h>
 #include <NaluParsing.h>
@@ -104,6 +94,11 @@
 #include <TurbViscSmagorinskyAlgorithm.h>
 #include <TurbViscSSTAlgorithm.h>
 #include <TurbViscWaleAlgorithm.h>
+
+// nso
+#include <nso/MomentumNSOKeElemSuppAlg.h>
+#include <nso/MomentumNSOElemSuppAlg.h>
+#include <nso/MomentumNSOGradElemSuppAlg.h>
 
 // user function
 #include <user_functions/ConvectingTaylorVortexVelocityAuxFunction.h>
@@ -130,6 +125,10 @@
 
 #include <user_functions/TaylorGreenPressureAuxFunction.h>
 #include <user_functions/TaylorGreenVelocityAuxFunction.h>
+
+#include <user_functions/SinProfileChannelFlowVelocityAuxFunction.h>
+
+#include <user_functions/BoundaryLayerPerturbationAuxFunction.h>
 
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
@@ -502,6 +501,20 @@ LowMachEquationSystem::register_initial_condition_fcn(
         throw std::runtime_error("Wind_energy_taylor_vortex missing parameters");
       }
     }
+    else if ( fcnName == "boundary_layer_perturbation") {
+      
+      // extract the params
+      std::map<std::string, std::vector<double> >::const_iterator iterParams
+        = theParams.find(dofName);
+      if (iterParams != theParams.end()) {
+        std::vector<double> fcnParams = (*iterParams).second;	
+        // create the function
+        theAuxFunc = new BoundaryLayerPerturbationAuxFunction(0,nDim,fcnParams);
+      }
+      else {
+        throw std::runtime_error("Boundary_layer_perturbation missing parameters");
+      }
+    }
     else if ( fcnName == "SteadyTaylorVortex" ) {
       theAuxFunc = new SteadyTaylorVortexVelocityAuxFunction(0,nDim);
     }
@@ -516,6 +529,9 @@ LowMachEquationSystem::register_initial_condition_fcn(
     }
     else if ( fcnName == "TaylorGreen" ) {
       theAuxFunc = new TaylorGreenVelocityAuxFunction(0,nDim); 
+    }
+    else if ( fcnName == "SinProfileChannelFlow" ) {
+      theAuxFunc = new SinProfileChannelFlowVelocityAuxFunction(0,nDim);
     }
     else {
       throw std::runtime_error("InitialCondFunction::non-supported velocity IC"); 
@@ -847,6 +863,7 @@ MomentumEquationSystem::initial_work()
 
   // proceed with a bunch of initial work; wrap in timer
   const double timeA = NaluEnv::self().nalu_time();
+  realm_.compute_vrtm();
   compute_projected_nodal_gradient();
   compute_wall_function_params();
   tviscAlgDriver_->execute();
@@ -1043,16 +1060,16 @@ MomentumEquationSystem::register_interior_algorithm(
         else if (sourceName == "NSO_4TH_ALT" ) {
           suppAlg = new MomentumNSOElemSuppAlg(realm_, velocity_, dudx_, realm_.is_turbulent() ? evisc_ : visc_, 1.0, 1.0);
         }
-        else if (sourceName == "NSO_KE_2ND" ) {
-          suppAlg = new MomentumKeNSOElemSuppAlg(realm_, velocity_, dudx_, 0.0);
+        else if (sourceName == "NSO_2ND_KE" ) {
+          suppAlg = new MomentumNSOKeElemSuppAlg(realm_, velocity_, dudx_, 0.0);
         }
-        else if (sourceName == "NSO_KE_4TH" ) {
-          suppAlg = new MomentumKeNSOElemSuppAlg(realm_, velocity_, dudx_, 1.0);
+        else if (sourceName == "NSO_4TH_KE" ) {
+          suppAlg = new MomentumNSOKeElemSuppAlg(realm_, velocity_, dudx_, 1.0);
         }
-        else if (sourceName == "NSO_GRAD_2ND" ) {
+        else if (sourceName == "NSO_2ND_GRAD" ) {
           suppAlg = new MomentumNSOGradElemSuppAlg(realm_, velocity_, dudx_, 0.0);
         }
-        else if (sourceName == "NSO_GRAD_4TH" ) {
+        else if (sourceName == "NSO_4TH_GRAD" ) {
           suppAlg = new MomentumNSOGradElemSuppAlg(realm_, velocity_, dudx_, 1.0);
         }
         else if (sourceName == "buoyancy" ) {
@@ -1064,6 +1081,7 @@ MomentumEquationSystem::register_interior_algorithm(
         else {
           throw std::runtime_error("MomentumElemSrcTerms::Error Source term is not supported: " + sourceName);
         }
+        NaluEnv::self().naluOutputP0() << "MomentumElemSrcTerms::added() " << sourceName << std::endl;
         theSolverAlg->supplementalAlg_.push_back(suppAlg);
       }
     }
@@ -1135,9 +1153,13 @@ MomentumEquationSystem::register_interior_algorithm(
         else if ( sourceName == "actuator_line") {
           suppAlg = new MomentumActuatorLineSrcNodeSuppAlg(realm_);
         }
+        else if ( sourceName == "EarthCoriolis") {
+          suppAlg = new MomentumCoriolisSrcNodeSuppAlg(realm_);
+        }
         else {
           throw std::runtime_error("MomentumNodalSrcTerms::Error Source term is not supported: " + sourceName);
         }
+        NaluEnv::self().naluOutputP0() << "MomentumNodalSrcTerms::added() " << sourceName << std::endl;
         theAlg->supplementalAlg_.push_back(suppAlg);
       }
     }
@@ -1267,8 +1289,16 @@ MomentumEquationSystem::register_inflow_bc(
 			       theBcField, theAuxFunc,
 			       stk::topology::NODE_RANK);
   
-  bcDataAlg_.push_back(auxAlg);
-  
+  // how to populate the field?
+  if ( userData.externalData_ ) {
+    // xfer will handle population; only need to populate the initial value
+    realm_.initCondAlg_.push_back(auxAlg);
+  }
+  else {
+    // put it on bcData
+    bcDataAlg_.push_back(auxAlg);
+  }
+
   // copy velocity_bc to velocity np1...
   CopyFieldAlgorithm *theCopyAlg
     = new CopyFieldAlgorithm(realm_, part,
@@ -1406,6 +1436,7 @@ MomentumEquationSystem::register_wall_bc(
   // find out if this is a wall function approach
   WallUserData userData = wallBCData.userData_;
   const bool wallFunctionApproach = userData.wallFunctionApproach_;
+  const bool ablWallFunctionApproach = userData.ablWallFunctionApproach_;
 
   const std::string bcFieldName = wallFunctionApproach ? "wall_velocity_bc" : "velocity_bc";
 
@@ -1431,15 +1462,15 @@ MomentumEquationSystem::register_wall_bc(
       theAuxFunc = new ConstantAuxFunction(0, nDim, userSpec);
     }
     else if ( FUNCTION_UD == theDataType ) {
-      // extract the name
+      // extract the name and parameters (double and string)
       std::string fcnName = get_bc_function_name(userData, velocityName);
-      std::vector<double> theParams = get_bc_function_params(userData, velocityName);
       // switch on the name found...
       if ( fcnName == "tornado" ) {
         theAuxFunc = new TornadoAuxFunction(0,nDim);
       }
       else if ( fcnName == "wind_energy" ) {
-     	theAuxFunc = new WindEnergyAuxFunction(0,nDim, theParams);
+        std::vector<std::string> theStringParams  = get_bc_function_string_params(userData, velocityName);
+     	theAuxFunc = new WindEnergyAuxFunction(0,nDim, theStringParams, realm_);
       }
       else {
         throw std::runtime_error("Only wind_energy and tornado user functions supported");
@@ -1513,28 +1544,90 @@ MomentumEquationSystem::register_wall_bc(
     if ( NULL == wallFunctionParamsAlgDriver_)
       wallFunctionParamsAlgDriver_ = new AlgorithmDriver(realm_);
 
-    // create algorithm for utau, yp and assembled nodal wall area (_WallFunction)
-    std::map<AlgorithmType, Algorithm *>::iterator it_utau =
-        wallFunctionParamsAlgDriver_->algMap_.find(algType);
-    if ( it_utau == wallFunctionParamsAlgDriver_->algMap_.end() ) {
-      ComputeWallFrictionVelocityAlgorithm *theUtauAlg =
-          new ComputeWallFrictionVelocityAlgorithm(realm_, part, realm_.realmUsesEdges_);
-      wallFunctionParamsAlgDriver_->algMap_[algType] = theUtauAlg;
-    }
-    else {
-      it_utau->second->partVec_.push_back(part);
+    if (ablWallFunctionApproach) {
+
+      // register boundary data: heat_flux_bc
+      ScalarFieldType *theHeatFluxBcField = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "heat_flux_bc"));
+      stk::mesh::put_field(*theHeatFluxBcField, *part);
+
+      NormalHeatFlux heatFlux = userData.q_;
+      std::vector<double> userSpec(1);
+      userSpec[0] = heatFlux.qn_;
+
+      // new it
+      ConstantAuxFunction *theHeatFluxAuxFunc = new ConstantAuxFunction(0, 1, userSpec);
+
+      // bc data alg
+      AuxFunctionAlgorithm *auxAlg
+	= new AuxFunctionAlgorithm(realm_, part,
+				   theHeatFluxBcField, theHeatFluxAuxFunc,
+				   stk::topology::NODE_RANK);
+      bcDataAlg_.push_back(auxAlg);
+
+      const AlgorithmType wfAlgType = WALL_ABL;
+
+      // create algorithm for utau, yp and assembled nodal wall area (_WallFunction)
+      //Gravity gravity = userData.gravity_;
+      //const double grav = gravity.gravity_;
+      std::vector<double> gravity;
+      gravity.resize(nDim);
+      gravity = realm_.solutionOptions_->gravity_;
+      const double grav = std::abs(gravity[userData.gravityComponent_ - 1]);
+      RoughnessHeight rough = userData.z0_;
+      const double z0 = rough.z0_;
+      ReferenceTemperature Tref = userData.referenceTemperature_;
+      const double referenceTemperature = Tref.referenceTemperature_;
+      std::map<AlgorithmType, Algorithm *>::iterator it_utau =
+        wallFunctionParamsAlgDriver_->algMap_.find(wfAlgType);
+      if ( it_utau == wallFunctionParamsAlgDriver_->algMap_.end() ) {
+        ComputeABLWallFrictionVelocityAlgorithm *theUtauAlg =
+          new ComputeABLWallFrictionVelocityAlgorithm(realm_, part, realm_.realmUsesEdges_, grav, z0, referenceTemperature);
+        wallFunctionParamsAlgDriver_->algMap_[wfAlgType] = theUtauAlg;
+      }
+      else {
+        it_utau->second->partVec_.push_back(part);
+      }
+
+      // create lhs/rhs algorithm; generalized for edge (nearest node usage) and element
+      std::map<AlgorithmType, SolverAlgorithm *>::iterator it_wf =
+        solverAlgDriver_->solverAlgMap_.find(wfAlgType);
+      if ( it_wf == solverAlgDriver_->solverAlgMap_.end() ) {
+        AssembleMomentumABLWallFunctionSolverAlgorithm *theAlg
+          = new AssembleMomentumABLWallFunctionSolverAlgorithm(realm_, part, this, realm_.realmUsesEdges_, grav, z0, referenceTemperature);
+        solverAlgDriver_->solverAlgMap_[wfAlgType] = theAlg;
+      }
+      else {
+        it_wf->second->partVec_.push_back(part);
+      }
     }
 
-    // create lhs/rhs algorithm; generalized for edge (nearest node usage) and element
-    std::map<AlgorithmType, SolverAlgorithm *>::iterator it_wf =
-      solverAlgDriver_->solverAlgMap_.find(algType);
-    if ( it_wf == solverAlgDriver_->solverAlgMap_.end() ) {
-      AssembleMomentumWallFunctionSolverAlgorithm *theAlg
-        = new AssembleMomentumWallFunctionSolverAlgorithm(realm_, part, this, realm_.realmUsesEdges_);
-      solverAlgDriver_->solverAlgMap_[algType] = theAlg;
-    }
     else {
-      it_wf->second->partVec_.push_back(part);
+
+      const AlgorithmType wfAlgType = WALL;
+
+      // create algorithm for utau, yp and assembled nodal wall area (_WallFunction)
+      std::map<AlgorithmType, Algorithm *>::iterator it_utau =
+        wallFunctionParamsAlgDriver_->algMap_.find(wfAlgType);
+      if ( it_utau == wallFunctionParamsAlgDriver_->algMap_.end() ) {
+        ComputeWallFrictionVelocityAlgorithm *theUtauAlg =
+          new ComputeWallFrictionVelocityAlgorithm(realm_, part, realm_.realmUsesEdges_);
+        wallFunctionParamsAlgDriver_->algMap_[wfAlgType] = theUtauAlg;
+      }
+      else {
+        it_utau->second->partVec_.push_back(part);
+      }
+
+      // create lhs/rhs algorithm; generalized for edge (nearest node usage) and element
+      std::map<AlgorithmType, SolverAlgorithm *>::iterator it_wf =
+        solverAlgDriver_->solverAlgMap_.find(wfAlgType);
+      if ( it_wf == solverAlgDriver_->solverAlgMap_.end() ) {
+        AssembleMomentumWallFunctionSolverAlgorithm *theAlg
+          = new AssembleMomentumWallFunctionSolverAlgorithm(realm_, part, this, realm_.realmUsesEdges_);
+        solverAlgDriver_->solverAlgMap_[wfAlgType] = theAlg;
+      }
+      else {
+        it_wf->second->partVec_.push_back(part);
+      }
     }
   }
   else {
@@ -1555,68 +1648,6 @@ MomentumEquationSystem::register_wall_bc(
     // need p^n+1/2; requires "old" pressure... need a utility to save it and compute it...
   }
 
-}
-
-//--------------------------------------------------------------------------
-//-------- register_contact_bc ---------------------------------------------
-//--------------------------------------------------------------------------
-void
-MomentumEquationSystem::register_contact_bc(
-  stk::mesh::Part *part,
-  const stk::topology &theTopo,
-  const ContactBoundaryConditionData &contactBCData) {
-
-  const AlgorithmType algType = CONTACT;
-
-  // np1 velocity
-  VectorFieldType &velocityNp1 = velocity_->field_of_state(stk::mesh::StateNP1);
-  GenericFieldType &dudxNone = dudx_->field_of_state(stk::mesh::StateNone);
-
-  if ( realm_.realmUsesEdges_ ) {
-    // register halo_ui if using the element-based projected nodal gradient
-    VectorFieldType *haloUi = NULL;
-    if ( !edgeNodalGradient_ ) {
-      stk::mesh::MetaData &meta_data = realm_.meta_data();
-      haloUi = &(meta_data.declare_field<VectorFieldType>(stk::topology::NODE_RANK, "halo_ui"));
-      stk::mesh::put_field(*haloUi, *part);
-    }
-
-    // non-solver; dudx
-    std::map<AlgorithmType, Algorithm *>::iterator it =
-      assembleNodalGradAlgDriver_->algMap_.find(algType);
-    if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
-      Algorithm *theAlg = NULL;
-      if ( edgeNodalGradient_ ) {
-        theAlg = new AssembleNodalGradUEdgeContactAlgorithm(realm_, part, &velocityNp1, &dudxNone);
-      }
-      else {
-        theAlg = new AssembleNodalGradUElemContactAlgorithm(realm_, part, &velocityNp1, &dudxNone, haloUi);
-      }
-      assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
-    }
-    else {
-      it->second->partVec_.push_back(part);
-    }
-
-    // solver; lhs
-    std::map<AlgorithmType, SolverAlgorithm *>::iterator itsi =
-      solverAlgDriver_->solverAlgMap_.find(algType);
-    if ( itsi == solverAlgDriver_->solverAlgMap_.end() ) {
-      AssembleMomentumEdgeContactSolverAlgorithm *theAlg
-        = new AssembleMomentumEdgeContactSolverAlgorithm(realm_, part, this);
-      solverAlgDriver_->solverAlgMap_[algType] = theAlg;
-    }
-    else {
-      itsi->second->partVec_.push_back(part);
-    }
-  }
-  else {
-    throw std::runtime_error("Sorry, element-based contact not supported");
-  }
-
-  // error checking; PNG not ready for prime time here
-  if ( managePNG_ )
-    throw std::runtime_error("Contact algorithm not set up for PNG");
 }
 
 //--------------------------------------------------------------------------
@@ -1693,29 +1724,31 @@ MomentumEquationSystem::register_non_conformal_bc(
   stk::mesh::put_field(*mdotBip, *part, numScsBip );
 
   // non-solver; contribution to Gjui; DG algorithm decides on locations for integration points
-  if ( edgeNodalGradient_ ) {
-    std::map<AlgorithmType, Algorithm *>::iterator it
-      = assembleNodalGradAlgDriver_->algMap_.find(algType);
-    if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
-      Algorithm *theAlg
-        = new AssembleNodalGradUBoundaryAlgorithm(realm_, part, &velocityNp1, &dudxNone, edgeNodalGradient_);
-      assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
+  if ( !managePNG_ ) {
+    if ( edgeNodalGradient_ ) {
+      std::map<AlgorithmType, Algorithm *>::iterator it
+        = assembleNodalGradAlgDriver_->algMap_.find(algType);
+      if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
+        Algorithm *theAlg
+          = new AssembleNodalGradUBoundaryAlgorithm(realm_, part, &velocityNp1, &dudxNone, edgeNodalGradient_);
+        assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
+      }
+      else {
+        it->second->partVec_.push_back(part);
+      }
     }
-    else {
-      it->second->partVec_.push_back(part);
-    }
-  }
-  else { 
-    // proceed with DG
-    std::map<AlgorithmType, Algorithm *>::iterator it
-      = assembleNodalGradAlgDriver_->algMap_.find(algType);
-    if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
-      AssembleNodalGradUNonConformalAlgorithm *theAlg 
-        = new AssembleNodalGradUNonConformalAlgorithm(realm_, part, &velocityNp1, &dudxNone);
-      assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
-    }
-    else {
-      it->second->partVec_.push_back(part);
+    else { 
+      // proceed with DG
+      std::map<AlgorithmType, Algorithm *>::iterator it
+        = assembleNodalGradAlgDriver_->algMap_.find(algType);
+      if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
+        AssembleNodalGradUNonConformalAlgorithm *theAlg 
+          = new AssembleNodalGradUNonConformalAlgorithm(realm_, part, &velocityNp1, &dudxNone);
+        assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
+      }
+      else {
+        it->second->partVec_.push_back(part);
+      }
     }
   }
   
@@ -1731,10 +1764,6 @@ MomentumEquationSystem::register_non_conformal_bc(
   else {
     itsi->second->partVec_.push_back(part);
   }
-
-  // error checking; DG algorithm not ready for primetime
-  if ( managePNG_ )
-    throw std::runtime_error("Nonconformal algorithm not set up for PNG");
 }
 
 //--------------------------------------------------------------------------
@@ -1900,9 +1929,9 @@ MomentumEquationSystem::compute_projected_nodal_gradient()
     const int nameOffset = pngName.length()+8;
     NaluEnv::self().naluOutputP0()
         << std::setw(nameOffset) << std::right << pngName
-        << std::setw(32-nameOffset)  << std::right << sumLinearIterations
-        << std::setw(18) << std::right << sumLinearResidual
-        << std::setw(15) << std::right << sumNonlinearResidual
+        << std::setw(32-nameOffset)  << std::right << sumLinearIterations/(int)nDim
+        << std::setw(18) << std::right << sumLinearResidual/(int)nDim
+        << std::setw(15) << std::right << sumNonlinearResidual/(int)nDim
         << std::setw(14) << std::right << scaledNonLinearResidual << std::endl;
 
     // a bit covert, provide linsys with the new norm which is the sum of all norms
@@ -2136,6 +2165,7 @@ ContinuityEquationSystem::register_interior_algorithm(
           else {
             throw std::runtime_error("ContinuityElemSrcTerms::Error Source term is not supported: " + sourceName);
           }
+          NaluEnv::self().naluOutputP0() << "ContinuityElemSrcTerms::added " << sourceName << std::endl;
           theSolverAlg->supplementalAlg_.push_back(suppAlg);
         }
       }
@@ -2189,7 +2219,7 @@ ContinuityEquationSystem::register_interior_algorithm(
         else {
           throw std::runtime_error("ContinuityNodalSrcTerms::Error Source term is not supported: " + sourceName);
         }
-        // add supplemental algorithm
+        NaluEnv::self().naluOutputP0() << "ContinuityNodalSrcTerms::added " << sourceName << std::endl;
         theAlg->supplementalAlg_.push_back(suppAlg);
       }
     }
@@ -2272,7 +2302,16 @@ ContinuityEquationSystem::register_inflow_bc(
     = new AuxFunctionAlgorithm(realm_, part,
                                theBcField, theAuxFunc,
                                stk::topology::NODE_RANK);
-  bcDataAlg_.push_back(auxAlg);
+
+  // how to populate the field?
+  if ( userData.externalData_ ) {
+    // xfer will handle population; only need to populate the initial value
+    realm_.initCondAlg_.push_back(auxAlg);
+  }
+  else {
+    // put it on bcData
+    bcDataAlg_.push_back(auxAlg);
+  }
 
   // non-solver; contribution to Gjp; allow for element-based shifted
   if ( !managePNG_ ) {
@@ -2420,75 +2459,6 @@ ContinuityEquationSystem::register_wall_bc(
       it->second->partVec_.push_back(part);
     }
   }
-
-}
-
-//--------------------------------------------------------------------------
-//-------- register_contact_bc ---------------------------------------------
-//--------------------------------------------------------------------------
-void
-ContinuityEquationSystem::register_contact_bc(
-  stk::mesh::Part *part,
-  const stk::topology &theTopo,
-  const ContactBoundaryConditionData &contactBCData) {
-
-  const AlgorithmType algType = CONTACT;
-
-  ScalarFieldType &pressureNone = pressure_->field_of_state(stk::mesh::StateNone);
-  VectorFieldType &dpdxNone = dpdx_->field_of_state(stk::mesh::StateNone);
-  if ( realm_.realmUsesEdges_ ) {
-    // register halo_p if using the element-based projected nodal gradient
-    ScalarFieldType *haloP = NULL;
-    if ( !edgeNodalGradient_ || elementContinuityEqs_) {
-      stk::mesh::MetaData &meta_data = realm_.meta_data();
-      haloP = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "halo_p"));
-      stk::mesh::put_field(*haloP, *part);
-    }
-    
-    // non-solver; contribution to GjP
-    std::map<AlgorithmType, Algorithm *>::iterator it =
-      assembleNodalGradAlgDriver_->algMap_.find(algType);
-    if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
-      Algorithm *theAlg = NULL;
-      if ( edgeNodalGradient_ ) {
-        theAlg = new AssembleNodalGradEdgeContactAlgorithm(realm_, part, &pressureNone, &dpdxNone);
-      }
-      else {
-        theAlg = new AssembleNodalGradElemContactAlgorithm(realm_, part, &pressureNone, &dpdxNone, haloP);
-      }
-      assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
-    }
-    else {
-      it->second->partVec_.push_back(part);
-    }
-
-    // non-solver alg; compute contact mdot
-    std::map<AlgorithmType, Algorithm *>::iterator itm =
-      computeMdotAlgDriver_->algMap_.find(algType);
-    if ( itm == computeMdotAlgDriver_->algMap_.end() ) {
-      ComputeMdotEdgeContactAlgorithm *theAlg
-        = new ComputeMdotEdgeContactAlgorithm(realm_, part);
-      computeMdotAlgDriver_->algMap_[algType] = theAlg;
-    }
-    else {
-      itm->second->partVec_.push_back(part);
-    }
-
-    // solver; lhs
-    std::map<AlgorithmType, SolverAlgorithm *>::iterator itsi =
-      solverAlgDriver_->solverAlgMap_.find(algType);
-    if ( itsi == solverAlgDriver_->solverAlgMap_.end() ) {
-      AssembleContinuityEdgeContactSolverAlgorithm *theAlg
-        = new AssembleContinuityEdgeContactSolverAlgorithm(realm_, part, this);
-      solverAlgDriver_->solverAlgMap_[algType] = theAlg;
-    }
-    else {
-      itsi->second->partVec_.push_back(part);
-    }
-  }
-  else {
-    throw std::runtime_error("Sorry, element-based contact not supported");
-  }
 }
 
 //--------------------------------------------------------------------------
@@ -2543,32 +2513,34 @@ ContinuityEquationSystem::register_non_conformal_bc(
   stk::mesh::put_field(*mdotBip, *part, numScsBip );
 
   // non-solver; contribution to Gjp; DG algorithm decides on locations for integration points
-  if ( edgeNodalGradient_ ) {    
-    std::map<AlgorithmType, Algorithm *>::iterator it
-      = assembleNodalGradAlgDriver_->algMap_.find(algType);
-    if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
-      Algorithm *theAlg 
-        = new AssembleNodalGradBoundaryAlgorithm(realm_, part, pressure_, dpdx_, edgeNodalGradient_);
-      assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
+  if ( !managePNG_ ) {
+    if ( edgeNodalGradient_ ) {    
+      std::map<AlgorithmType, Algorithm *>::iterator it
+        = assembleNodalGradAlgDriver_->algMap_.find(algType);
+      if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
+        Algorithm *theAlg 
+          = new AssembleNodalGradBoundaryAlgorithm(realm_, part, pressure_, dpdx_, edgeNodalGradient_);
+        assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
+      }
+      else {
+        it->second->partVec_.push_back(part);
+      }
     }
     else {
-      it->second->partVec_.push_back(part);
+      // proceed with DG
+      std::map<AlgorithmType, Algorithm *>::iterator it
+        = assembleNodalGradAlgDriver_->algMap_.find(algType);
+      if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
+        AssembleNodalGradNonConformalAlgorithm *theAlg 
+          = new AssembleNodalGradNonConformalAlgorithm(realm_, part, pressure_, dpdx_);
+        assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
+      }
+      else {
+        it->second->partVec_.push_back(part);
+      }
     }
   }
-  else {
-    // proceed with DG
-    std::map<AlgorithmType, Algorithm *>::iterator it
-      = assembleNodalGradAlgDriver_->algMap_.find(algType);
-    if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
-      AssembleNodalGradNonConformalAlgorithm *theAlg 
-        = new AssembleNodalGradNonConformalAlgorithm(realm_, part, pressure_, dpdx_);
-      assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
-    }
-    else {
-      it->second->partVec_.push_back(part);
-    }
-  }
-  
+
   // non-solver alg; compute nc mdot (same for edge and element-based)
   std::map<AlgorithmType, Algorithm *>::iterator itm =
     computeMdotAlgDriver_->algMap_.find(algType);

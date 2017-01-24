@@ -97,11 +97,6 @@ public:
     const stk::topology &theTopo,
     const OpenBoundaryConditionData &openBCData) {}
 
-  virtual void register_contact_bc(
-    stk::mesh::Part *part,
-    const stk::topology &theTopo,
-    const ContactBoundaryConditionData &contactBCData) {}
-
   virtual void register_symmetry_bc(
     stk::mesh::Part *part,
     const stk::topology &theTopo,
@@ -186,6 +181,10 @@ public:
   
   std::vector<double>
   get_bc_function_params(
+    const UserData&, std::string &name);
+
+  std::vector<std::string>
+  get_bc_function_string_params(
     const UserData&, std::string &name);
 
   virtual void post_converged_work() {}

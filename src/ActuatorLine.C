@@ -198,7 +198,7 @@ ActuatorLine::compute_point_drag(
   double coef = 6.0*pi_*pointGasViscosity*pointRadius;
 
   // this is from the fluids perspective, not the psuedo particle
-  pointDragLHS = 2.0*coef*fD;
+  pointDragLHS = coef*fD;
   for ( int j = 0; j < nDim; ++j )
     pointDrag[j] = coef*fD*(pointVelocity[j] - pointGasVelocity[j]);
 }
@@ -228,56 +228,58 @@ ActuatorLine::load(
   const YAML::Node & y_node)
 {
   // check for any data probes
-  const YAML::Node *y_actuatorLine = y_node.FindValue("actuator_line");
+  const YAML::Node y_actuatorLine = y_node["actuator_line"];
   if (y_actuatorLine) {
     NaluEnv::self().naluOutputP0() << "ActuatorLine::load" << std::endl;
 
     // search specifications
     std::string searchMethodName = "na";
-    get_if_present(*y_actuatorLine, "search_method", searchMethodName, searchMethodName);
+    get_if_present(y_actuatorLine, "search_method", searchMethodName, searchMethodName);
     
     // determine search method for this pair
     if ( searchMethodName == "boost_rtree" )
       searchMethod_ = stk::search::BOOST_RTREE;
     else if ( searchMethodName == "stk_octree" )
       searchMethod_ = stk::search::OCTREE;
+    else if ( searchMethodName == "stk_kdtree" )
+      searchMethod_ = stk::search::KDTREE;
     else
       NaluEnv::self().naluOutputP0() << "ActuatorLine::search method not declared; will use BOOST_RTREE" << std::endl;
 
     // extract the set of from target names; each spec is homogeneous in this respect
-    const YAML::Node &searchTargets = (*y_actuatorLine)["search_target_part"];
+    const YAML::Node searchTargets = y_actuatorLine["search_target_part"];
     if (searchTargets.Type() == YAML::NodeType::Scalar) {
       searchTargetNames_.resize(1);
-      searchTargets >> searchTargetNames_[0];
+      searchTargetNames_[0] = searchTargets.as<std::string>() ;
     }
     else {
       searchTargetNames_.resize(searchTargets.size());
       for (size_t i=0; i < searchTargets.size(); ++i) {
-        searchTargets[i] >> searchTargetNames_[i];
+        searchTargetNames_[i] = searchTargets[i].as<std::string>() ;
       }
     }
     
-    const YAML::Node *y_specs = expect_sequence(*y_actuatorLine, "specifications", false);
+    const YAML::Node y_specs = expect_sequence(y_actuatorLine, "specifications", false);
     if (y_specs) {
 
       // save off number of towers
-      const int numTowers = y_specs->size();
+      const int numTowers = y_specs.size();
 
       // deal with processors... Distribute each tower over subsequent procs
       const int numProcs = NaluEnv::self().parallel_size();
       const int divProcTower = std::max(numProcs/numTowers, numProcs);
 
       // each specification can have multiple machines
-      for (size_t ispec = 0; ispec < y_specs->size(); ++ispec) {
-        const YAML::Node &y_spec = (*y_specs)[ispec];
+      for (size_t ispec = 0; ispec < y_specs.size(); ++ispec) {
+        const YAML::Node y_spec = y_specs[ispec];
         
         ActuatorLineInfo *actuatorLineInfo = new ActuatorLineInfo();
         actuatorLineInfo_.push_back(actuatorLineInfo);
         
         // name
-        const YAML::Node *theName = y_spec.FindValue("turbine_name");
+        const YAML::Node theName = y_spec["turbine_name"];
         if ( theName )
-          *theName >> actuatorLineInfo->turbineName_;
+          actuatorLineInfo->turbineName_ = theName.as<std::string>() ;
         else
           throw std::runtime_error("ActuatorLine: no name provided");
         
@@ -308,16 +310,16 @@ ActuatorLine::load(
         actuatorLineInfo->numPoints_ = numPoints;
         
         // tip coordinates of this point
-        const YAML::Node *tipCoord = y_spec.FindValue("tip_coordinates");
+        const YAML::Node tipCoord = y_spec["tip_coordinates"];
         if ( tipCoord )
-          *tipCoord >> actuatorLineInfo->tipCoordinates_;
+          actuatorLineInfo->tipCoordinates_ = tipCoord.as<Coordinates>() ;
         else
           throw std::runtime_error("ActuatorLine: lacking tip_coordinates");
 
         // tail coordinates of this point
-        const YAML::Node *tailCoord = y_spec.FindValue("tail_coordinates");
+        const YAML::Node tailCoord = y_spec["tail_coordinates"];
         if ( tailCoord )
-          *tailCoord >> actuatorLineInfo->tailCoordinates_;
+          actuatorLineInfo->tailCoordinates_ = tailCoord.as<Coordinates >() ;
         else
           throw std::runtime_error("ActuatorLine: lacking tail_coordinates");
       }
@@ -341,10 +343,7 @@ void
 ActuatorLine::initialize()
 {
   stk::mesh::BulkData & bulkData = realm_.bulk_data();
-  stk::mesh::MetaData & metaData = realm_.meta_data();
- 
-  const int nDim = metaData.spatial_dimension();
-
+  
   // initialize need to ghost and elems to ghost
   needToGhostCount_ = 0;
   elemsToGhost_.clear();
@@ -548,7 +547,9 @@ ActuatorLine::execute()
   }
 
   // parallel assemble (contributions from ghosted and locally owned)
-  const std::vector<const stk::mesh::FieldBase*> sumFieldVec(1, actuator_line_source);
+  std::vector<const stk::mesh::FieldBase*> sumFieldVec;
+  sumFieldVec.push_back(actuator_line_source);
+  sumFieldVec.push_back(actuator_line_source_lhs);
   stk::mesh::parallel_sum_including_ghosts(bulkData, sumFieldVec);
 }
 
@@ -959,7 +960,6 @@ ActuatorLine::compute_volume(
   // extract master element from the bucket in which the element resides
   const stk::topology &elemTopo = bulkData.bucket(elem).topology();
   MasterElement *meSCV = realm_.get_volume_master_element(elemTopo);
-  int nodesPerElement = meSCV->nodesPerElement_;
   const int numScvIp = meSCV->numIntPoints_;
 
   // compute scv for this element
@@ -1053,7 +1053,6 @@ ActuatorLine::assemble_source_to_nodes(
   // extract master element from the bucket in which the element resides
   const stk::topology &elemTopo = bulkData.bucket(elem).topology();
   MasterElement *meSCV = realm_.get_volume_master_element(elemTopo);
-  int nodesPerElement = meSCV->nodesPerElement_;
   const int numScvIp = meSCV->numIntPoints_;
 
   // extract elem_node_relations
@@ -1071,7 +1070,7 @@ ActuatorLine::assemble_source_to_nodes(
     double * sourceTerm = (double*)stk::mesh::field_data(actuator_line_source, node );
     double * sourceTermLHS = (double*)stk::mesh::field_data(actuator_line_source_lhs, node );
     
-    // nodal weight based on volume weight
+    // nodal weight based on volume weight; very ad-hoc
     const double nodalWeight = ws_scv_volume_[ip]/elemVolume;
     *sourceTermLHS += nodalWeight*dragLHS*lhsFac;
     for ( int j=0; j < nDim; ++j ) {

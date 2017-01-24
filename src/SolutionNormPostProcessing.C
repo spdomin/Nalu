@@ -13,6 +13,8 @@
 #include <Realm.h>
 
 // the factory of aux functions
+#include <user_functions/SteadyThermal3dContactAuxFunction.h>
+#include <user_functions/SteadyThermal3dContactDtDxAuxFunction.h>
 #include <user_functions/SteadyThermalContactAuxFunction.h>
 #include <user_functions/SteadyTaylorVortexVelocityAuxFunction.h>
 #include <user_functions/SteadyTaylorVortexGradPressureAuxFunction.h>
@@ -80,36 +82,35 @@ SolutionNormPostProcessing::load(
   const YAML::Node & y_node)
 {
   // output for results
-  const YAML::Node *y_norm = y_node.FindValue("solution_norm");
+  const YAML::Node y_norm = y_node["solution_norm"];
   if (y_norm)
   {    
     // output frequency
-    get_if_present(*y_norm, "output_frequency", outputFrequency_, outputFrequency_);
+    get_if_present(y_norm, "output_frequency", outputFrequency_, outputFrequency_);
 
     // output name
-    get_if_present(*y_norm, "file_name", outputFileName_, outputFileName_);
+    get_if_present(y_norm, "file_name", outputFileName_, outputFileName_);
 
     // spacing
-    get_if_present(*y_norm, "spacing", w_, w_);
+    get_if_present(y_norm, "spacing", w_, w_);
 
     // percision
-    get_if_present(*y_norm, "percision", percision_, percision_);
+    get_if_present(y_norm, "percision", percision_, percision_);
 
     // target matches the physics description (see Material model)
     
     // find the pair; create some space for the names
-    const YAML::Node *y_dof_pair = y_norm->FindValue("dof_user_function_pair");
+    const YAML::Node y_dof_pair = y_norm["dof_user_function_pair"];
     std::string dofName, functionName;
     if (y_dof_pair)
     {
-      size_t varSize = y_dof_pair->size();
-      for (size_t ioption = 0; ioption < varSize; ++ioption) {
-        const YAML::Node & y_var = (*y_dof_pair)[ioption];
+      for (size_t ioption = 0; ioption < y_dof_pair.size(); ++ioption) {
+        const YAML::Node y_var = y_dof_pair[ioption];
         size_t varPairSize = y_var.size();
         if ( varPairSize != 2 )
           throw std::runtime_error("need two field name pairs for xfer");
-        y_var[0] >> dofName;
-        y_var[1] >> functionName;
+        dofName = y_var[0].as<std::string>() ;
+        functionName = y_var[1].as<std::string>() ;
 
         // push back pair of field names
         dofFunctionVec_.push_back(std::make_pair(dofName, functionName));
@@ -211,6 +212,12 @@ SolutionNormPostProcessing::analytical_function_factory(
   // switch on the name found...
   if ( functionName == "steady_2d_thermal" ) {
     theAuxFunc = new SteadyThermalContactAuxFunction();
+  }
+  else if ( functionName == "steady_3d_thermal" ) {
+    theAuxFunc = new SteadyThermal3dContactAuxFunction();
+  }
+  else if ( functionName == "steady_3d_thermal_dtdx" ) {
+    theAuxFunc = new SteadyThermal3dContactDtDxAuxFunction(0,realm_.meta_data().spatial_dimension());
   }
   else if ( functionName == "SteadyTaylorVortexVelocity" ) {
     theAuxFunc = new SteadyTaylorVortexVelocityAuxFunction(0,realm_.meta_data().spatial_dimension());

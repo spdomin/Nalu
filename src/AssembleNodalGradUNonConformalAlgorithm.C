@@ -55,6 +55,9 @@ AssembleNodalGradUNonConformalAlgorithm::AssembleNodalGradUNonConformalAlgorithm
 
   // what do we need ghosted for this alg to work?
   ghostFieldVec_.push_back(vectorQ_);
+  ghostFieldVec_.push_back(dualNodalVolume_);
+  ghostFieldVec_.push_back(exposedAreaVec_);
+  ghostFieldVec_.push_back(dqdx_);
 }
 
 //--------------------------------------------------------------------------
@@ -71,7 +74,6 @@ AssembleNodalGradUNonConformalAlgorithm::~AssembleNodalGradUNonConformalAlgorith
 void
 AssembleNodalGradUNonConformalAlgorithm::execute()
 {
-
   stk::mesh::BulkData & bulk_data = realm_.bulk_data();
   stk::mesh::MetaData & meta_data = realm_.meta_data();
 
@@ -117,15 +119,18 @@ AssembleNodalGradUNonConformalAlgorithm::execute()
         // extract current/opposing face/element
         stk::mesh::Entity currentFace = dgInfo->currentFace_;
         stk::mesh::Entity opposingFace = dgInfo->opposingFace_;
-        
+     
         // master element
         MasterElement * meFCCurrent = dgInfo->meFCCurrent_; 
         MasterElement * meFCOpposing = dgInfo->meFCOpposing_;
-        
+      
         // local ip, ordinals, etc
         const int currentGaussPointId = dgInfo->currentGaussPointId_;
         currentIsoParCoords = dgInfo->currentIsoParCoords_;
         opposingIsoParCoords = dgInfo->opposingIsoParCoords_;
+
+        // mapping from ip to nodes for this ordinal
+        const int *faceIpNodeMap = meFCCurrent->ipNodeMap();
 
         // extract some master element info
         const int currentNodesPerFace = meFCCurrent->nodesPerElement_;
@@ -177,8 +182,9 @@ AssembleNodalGradUNonConformalAlgorithm::execute()
           &opposingVectorQBip[0]);
 
         // extract pointers to nearest node fields
-        const int nn = currentGaussPointId;
+        const int nn = faceIpNodeMap[currentGaussPointId];
         stk::mesh::Entity nNode = current_face_node_rels[nn];
+
         const double volNN = *stk::mesh::field_data(*dualNodalVolume_, nNode);
         double *dqdx = stk::mesh::field_data(*dqdx_, nNode);
 

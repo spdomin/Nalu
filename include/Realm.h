@@ -49,8 +49,6 @@ class Algorithm;
 class AlgorithmDriver;
 class AuxFunctionAlgorithm;
 class ComputeGeometryAlgorithmDriver;
-class ContactInfo;
-class ContactManager;
 class OversetManager;
 class NonConformalManager;
 class ErrorIndicatorAlgorithmDriver;
@@ -156,15 +154,17 @@ class Realm {
     double omega);
   void set_current_displacement(
     stk::mesh::Part *targetPart,
-    Coordinates centroidCoords);
+    const std::vector<double> &centroidCoords,
+    const std::vector<double> &unitVec);
   void set_current_coordinates(
     stk::mesh::Part *targetPart);
   void set_mesh_velocity(
     stk::mesh::Part *targetPart,
-    Coordinates centroidCoords);
+    const std::vector<double> &centroidCoords,
+    const std::vector<double> &unitVec);
+  void mesh_velocity_cross_product(double *o, double *c, double *u);
 
   // non-conformal-like algorithm suppoer
-  void initialize_contact();
   void initialize_non_conformal();
   void initialize_overset();
   void initialize_post_processing_algorithms();
@@ -193,11 +193,6 @@ class Realm {
   void register_open_bc(
     stk::mesh::Part *part,
     const stk::topology &theTopo);
-
-  void register_contact_bc(
-    stk::mesh::Part *part,
-    const stk::topology &theTopo,
-    const ContactBoundaryConditionData &contactBCData);
 
   void register_symmetry_bc(
     stk::mesh::Part *part,
@@ -245,6 +240,7 @@ class Realm {
   virtual void populate_boundary_data();
   virtual void boundary_data_to_state_data();
   virtual double populate_variables_from_input(const double currentTime);
+  virtual void populate_external_variables_from_input(const double currentTime) {}
   virtual double populate_restart( double &timeStepNm1, int &timeStepCount);
   virtual void populate_derived_quantities();
   virtual void evaluate_properties();
@@ -292,12 +288,12 @@ class Realm {
     const std::string dofname);
   double get_divU();
 
-  // peclet factor specifics
-  std::string get_peclet_functional_form(
+  // tanh factor specifics
+  std::string get_tanh_functional_form(
     const std::string dofname);
-  double get_peclet_tanh_trans(
+  double get_tanh_trans(
     const std::string dofname);
-  double get_peclet_tanh_width(
+  double get_tanh_width(
     const std::string dofname);
 
   // consistent mass matrix for projected nodal gradient
@@ -352,6 +348,7 @@ class Realm {
 
   // provide all of the physics target names
   const std::vector<std::string> &get_physics_target_names();
+  double get_tanh_blending(const std::string dofName);
 
   Realms& realms_;
 
@@ -380,7 +377,6 @@ class Realm {
 
   // algorithm drivers managed by region
   ComputeGeometryAlgorithmDriver *computeGeometryAlgDriver_;
-  AlgorithmDriver *extrusionMeshDistanceAlgDriver_;
   ErrorIndicatorAlgorithmDriver *errorIndicatorAlgDriver_;
 # if defined (NALU_USES_PERCEPT)  
   Adapter *adapter_;
@@ -427,7 +423,7 @@ class Realm {
   double timerPopulateFieldData_;
   double timerOutputFields_;
   double timerCreateEdges_;
-  double timerContact_;
+  double timerNonconformal_;
   double timerInitializeEqs_;
   double timerPropertyEval_;
   double timerAdapt_;
@@ -435,10 +431,8 @@ class Realm {
   double timerTransferExecute_;
   double timerSkinMesh_;
 
-  ContactManager *contactManager_;
   NonConformalManager *nonConformalManager_;
   OversetManager *oversetManager_;
-  bool hasContact_;
   bool hasNonConformal_;
   bool hasOverset_;
 
@@ -446,6 +440,7 @@ class Realm {
   bool hasMultiPhysicsTransfer_;
   bool hasInitializationTransfer_;
   bool hasIoTransfer_;
+  bool hasExternalDataTransfer_;
 
   PeriodicManager *periodicManager_;
   bool hasPeriodic_;
@@ -499,11 +494,13 @@ class Realm {
   std::vector<Transfer *> multiPhysicsTransferVec_;
   std::vector<Transfer *> initializationTransferVec_;
   std::vector<Transfer *> ioTransferVec_;
+  std::vector<Transfer *> externalDataTransferVec_;
   void augment_transfer_vector(Transfer *transfer, const std::string transferObjective, Realm *toRealm);
   void process_multi_physics_transfer();
   void process_initialization_transfer();
   void process_io_transfer();
-
+  void process_external_data_transfer();
+  
   // process end of time step converged work
   void post_converged_work();
 

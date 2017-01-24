@@ -13,22 +13,18 @@
 #include <AssembleHeatCondIrradWallSolverAlgorithm.h>
 #include <AssembleScalarEdgeDiffSolverAlgorithm.h>
 #include <AssembleScalarElemDiffSolverAlgorithm.h>
-#include <AssembleScalarEdgeDiffContactSolverAlgorithm.h>
 #include <AssembleScalarDiffNonConformalSolverAlgorithm.h>
 #include <AssembleScalarFluxBCSolverAlgorithm.h>
 #include <AssembleNodalGradAlgorithmDriver.h>
 #include <AssembleNodalGradEdgeAlgorithm.h>
 #include <AssembleNodalGradElemAlgorithm.h>
 #include <AssembleNodalGradBoundaryAlgorithm.h>
-#include <AssembleNodalGradEdgeContactAlgorithm.h>
-#include <AssembleNodalGradElemContactAlgorithm.h>
 #include <AssembleNodalGradNonConformalAlgorithm.h>
 #include <AssembleNodeSolverAlgorithm.h>
 #include <HeatCondFemElemSuppAlg.h>
 #include <AuxFunctionAlgorithm.h>
 #include <ConstantAuxFunction.h>
 #include <CopyFieldAlgorithm.h>
-#include <ContactManager.h>
 #include <DirichletBC.h>
 #include <EquationSystem.h>
 #include <EquationSystems.h>
@@ -57,6 +53,8 @@
 #include <user_functions/SteadyThermalContactAuxFunction.h>
 #include <user_functions/SteadyThermalContactSrcNodeSuppAlg.h>
 #include <user_functions/SteadyThermalContactSrcElemSuppAlg.h>
+#include <user_functions/SteadyThermal3dContactAuxFunction.h>
+#include <user_functions/SteadyThermal3dContactSrcElemSuppAlg.h>
 
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
@@ -146,7 +144,7 @@ HeatCondEquationSystem::manage_png(
   EquationSystems& eqSystems)
 {
   projectedNodalGradEqs_ 
-    = new ProjectedNodalGradientEquationSystem(eqSystems, EQ_PNG, "dqdxCMM", "qTmp", "temperature", "PNGGradEQS");
+    = new ProjectedNodalGradientEquationSystem(eqSystems, EQ_PNG, "dtdx", "qTmp", "temperature", "PNGGradEQS");
   // fill the map; only require wall (which is the same name)...
   projectedNodalGradEqs_->set_data_map(WALL_BC, "temperature");
 }
@@ -210,10 +208,6 @@ HeatCondEquationSystem::register_nodal_fields(
 
     copyStateAlg_.push_back(theCopyAlgA);
   }
-
-  // WIP; register dqdxCMM for norm calculation
-  VectorFieldType *dqdxCMM = &(meta_data.declare_field<VectorFieldType>(stk::topology::NODE_RANK, "dqdxCMM"));
-  stk::mesh::put_field(*dqdxCMM, *part, nDim);
 }
 
 //--------------------------------------------------------------------------
@@ -333,12 +327,16 @@ HeatCondEquationSystem::register_interior_algorithm(
         if (sourceName == "steady_2d_thermal" ) {
           suppAlg = new SteadyThermalContactSrcElemSuppAlg(realm_);
         }
+        else if (sourceName == "steady_3d_thermal" ) {
+          suppAlg = new SteadyThermal3dContactSrcElemSuppAlg(realm_);
+        }
         else if (sourceName == "FEM" ) {
           suppAlg = new HeatCondFemElemSuppAlg(realm_);
         }
         else {
           throw std::runtime_error("HeatCondElemSrcTerms::Error Source term is not supported: " + sourceName);
         }
+        NaluEnv::self().naluOutputP0() << "HeatCondElemSrcTerms::added() " << sourceName << std::endl;
         theSolverAlg->supplementalAlg_.push_back(suppAlg);
       }
     }
@@ -380,6 +378,7 @@ HeatCondEquationSystem::register_interior_algorithm(
         if (sourceName == "steady_2d_thermal" ) {
           SteadyThermalContactSrcNodeSuppAlg *theSrc
             = new SteadyThermalContactSrcNodeSuppAlg(realm_);
+          NaluEnv::self().naluOutputP0() << "HeatCondNodalSrcTerms::added() " << sourceName << std::endl;
           theAlg->supplementalAlg_.push_back(theSrc);
         }
         else {
@@ -478,8 +477,11 @@ HeatCondEquationSystem::register_wall_bc(
       if ( fcnName == "steady_2d_thermal" ) {
         theAuxFunc = new SteadyThermalContactAuxFunction();
       }
+      else if ( fcnName == "steady_3d_thermal" ) {
+        theAuxFunc = new SteadyThermal3dContactAuxFunction();
+      }
       else {
-        throw std::runtime_error("Only steady_2d_thermal user functions supported");
+        throw std::runtime_error("Only steady_2d/3d_thermal user functions supported");
       }
     }
     
@@ -745,70 +747,6 @@ HeatCondEquationSystem::register_wall_bc(
     }
     
   }
-
-}
-
-//--------------------------------------------------------------------------
-//-------- register_contact_bc ---------------------------------------------
-//--------------------------------------------------------------------------
-void
-HeatCondEquationSystem::register_contact_bc(
-  stk::mesh::Part *part,
-  const stk::topology &theTopo,
-  const ContactBoundaryConditionData &contactBCData)
-{
-  const AlgorithmType algType = CONTACT;
-
-  ScalarFieldType &tempNp1 = temperature_->field_of_state(stk::mesh::StateNP1);
-  VectorFieldType &dtdxNone = dtdx_->field_of_state(stk::mesh::StateNone); 
-
-  ContactUserData userData = contactBCData.userData_;
-  const bool useHermiteInterpolation = userData.useHermiteInterpolation_;
-
-  if ( realm_.realmUsesEdges_ ) {
-
-    // register halo_t if using the element-based projected nodal gradient
-    ScalarFieldType *haloT = NULL;
-    if ( !edgeNodalGradient_ ) {
-      stk::mesh::MetaData &meta_data = realm_.meta_data();
-      haloT = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "halo_t"));
-      stk::mesh::put_field(*haloT, *part);
-    }
-    
-    // non-solver; contribution to Gjt
-    std::map<AlgorithmType, Algorithm *>::iterator it =
-      assembleNodalGradAlgDriver_->algMap_.find(algType);
-    if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
-      Algorithm *theAlg = NULL;
-      if ( edgeNodalGradient_ ) {
-        theAlg = new AssembleNodalGradEdgeContactAlgorithm(realm_, part, &tempNp1, &dtdxNone);
-      }
-      else {
-        theAlg = new AssembleNodalGradElemContactAlgorithm(realm_, part, &tempNp1, &dtdxNone, haloT);
-      }
-      assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
-    }
-    else {
-      it->second->partVec_.push_back(part);
-    }
-  
-    // solver; lhs
-    std::map<AlgorithmType, SolverAlgorithm *>::iterator itsi =
-      solverAlgDriver_->solverAlgMap_.find(algType);
-    if ( itsi == solverAlgDriver_->solverAlgMap_.end() ) {
-      AssembleScalarEdgeDiffContactSolverAlgorithm *theAlg
-        = new AssembleScalarEdgeDiffContactSolverAlgorithm(realm_, part, this,
-                                                           temperature_, dtdx_, thermalCond_,
-                                                           useHermiteInterpolation);
-      solverAlgDriver_->solverAlgMap_[algType] = theAlg;
-    }
-    else {
-      itsi->second->partVec_.push_back(part);
-    }
-  }
-  else {
-    throw std::runtime_error("Element-based scheme not supported with contact bc");
-  }
 }
 
 //--------------------------------------------------------------------------
@@ -819,7 +757,6 @@ HeatCondEquationSystem::register_non_conformal_bc(
   stk::mesh::Part *part,
   const stk::topology &/*theTopo*/)
 {
-  
   const AlgorithmType algType = NON_CONFORMAL;
 
   // np1
@@ -827,29 +764,31 @@ HeatCondEquationSystem::register_non_conformal_bc(
   VectorFieldType &dtdxNone = dtdx_->field_of_state(stk::mesh::StateNone);
 
   // non-solver; contribution to dtdx; DG algorithm decides on locations for integration points
-  if ( edgeNodalGradient_ ) {    
-    std::map<AlgorithmType, Algorithm *>::iterator it
-      = assembleNodalGradAlgDriver_->algMap_.find(algType);
-    if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
-      Algorithm *theAlg 
-        = new AssembleNodalGradBoundaryAlgorithm(realm_, part, &tempNp1, &dtdxNone, edgeNodalGradient_);
-      assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
+  if ( !managePNG_ ) {
+    if ( edgeNodalGradient_ ) {    
+      std::map<AlgorithmType, Algorithm *>::iterator it
+        = assembleNodalGradAlgDriver_->algMap_.find(algType);
+      if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
+        Algorithm *theAlg 
+          = new AssembleNodalGradBoundaryAlgorithm(realm_, part, &tempNp1, &dtdxNone, edgeNodalGradient_);
+        assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
+      }
+      else {
+        it->second->partVec_.push_back(part);
+      }
     }
     else {
-      it->second->partVec_.push_back(part);
-    }
-  }
-  else {
-    // proceed with DG
-    std::map<AlgorithmType, Algorithm *>::iterator it
-      = assembleNodalGradAlgDriver_->algMap_.find(algType);
-    if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
-      AssembleNodalGradNonConformalAlgorithm *theAlg 
-        = new AssembleNodalGradNonConformalAlgorithm(realm_, part, &tempNp1, &dtdxNone);
-      assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
-    }
-    else {
-      it->second->partVec_.push_back(part);
+      // proceed with DG
+      std::map<AlgorithmType, Algorithm *>::iterator it
+        = assembleNodalGradAlgDriver_->algMap_.find(algType);
+      if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
+        AssembleNodalGradNonConformalAlgorithm *theAlg 
+          = new AssembleNodalGradNonConformalAlgorithm(realm_, part, &tempNp1, &dtdxNone);
+        assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
+      }
+      else {
+        it->second->partVec_.push_back(part);
+      }
     }
   }
   
@@ -997,8 +936,12 @@ HeatCondEquationSystem::register_initial_condition_fcn(
       // create the function
       theAuxFunc = new SteadyThermalContactAuxFunction();      
     }
+    else if ( fcnName == "steady_3d_thermal" ) {
+      // create the function
+      theAuxFunc = new SteadyThermal3dContactAuxFunction();      
+    }
     else {
-      throw std::runtime_error("HeatCondEquationSystem::register_initial_condition_fcn: steady_2d_thermal only supported");
+      throw std::runtime_error("HeatCondEquationSystem::register_initial_condition_fcn: steady_2d/3d_thermal only supported");
     }
     
     // create the algorithm

@@ -8,7 +8,6 @@
 
 #include <SpecificDissipationRateEquationSystem.h>
 #include <AlgorithmDriver.h>
-#include <AssembleScalarEdgeContactSolverAlgorithm.h>
 #include <AssembleScalarEdgeOpenSolverAlgorithm.h>
 #include <AssembleScalarEdgeSolverAlgorithm.h>
 #include <AssembleScalarElemSolverAlgorithm.h>
@@ -19,8 +18,6 @@
 #include <AssembleNodalGradEdgeAlgorithm.h>
 #include <AssembleNodalGradElemAlgorithm.h>
 #include <AssembleNodalGradBoundaryAlgorithm.h>
-#include <AssembleNodalGradEdgeContactAlgorithm.h>
-#include <AssembleNodalGradElemContactAlgorithm.h>
 #include <AssembleNodalGradNonConformalAlgorithm.h>
 #include <AuxFunctionAlgorithm.h>
 #include <ComputeLowReynoldsSDRWallAlgorithm.h>
@@ -44,13 +41,15 @@
 #include <ScalarMassBackwardEulerNodeSuppAlg.h>
 #include <ScalarMassBDF2NodeSuppAlg.h>
 #include <ScalarMassElemSuppAlg.h>
-#include <ScalarKeNSOElemSuppAlg.h>
-#include <ScalarNSOElemSuppAlg.h>
 #include <Simulation.h>
 #include <SolutionOptions.h>
 #include <TimeIntegrator.h>
 #include <SpecificDissipationRateSSTNodeSourceSuppAlg.h>
 #include <SolverAlgorithmDriver.h>
+
+// nso
+#include <nso/ScalarNSOKeElemSuppAlg.h>
+#include <nso/ScalarNSOElemSuppAlg.h>
 
 // stk_util
 #include <stk_util/parallel/Parallel.hpp>
@@ -87,6 +86,7 @@ namespace nalu{
 SpecificDissipationRateEquationSystem::SpecificDissipationRateEquationSystem(
   EquationSystems& eqSystems)
   : EquationSystem(eqSystems, "SpecDissRateEQS"),
+    managePNG_(realm_.get_consistent_mass_matrix_png("specific_dissipation_rate")),
     sdr_(NULL),
     dwdx_(NULL),
     wTmp_(NULL),
@@ -110,6 +110,10 @@ SpecificDissipationRateEquationSystem::SpecificDissipationRateEquationSystem(
 
   // push back EQ to manager
   realm_.push_equation_to_systems(this);
+
+  // create projected nodal gradient equation system
+  if ( managePNG_ )
+    throw std::runtime_error("SpecificDissipationRateEquationSystem::Error managePNG is not complete");
 }
 
 //--------------------------------------------------------------------------
@@ -235,13 +239,13 @@ SpecificDissipationRateEquationSystem::register_interior_algorithm(
         else if (sourceName == "NSO_4TH_ALT" ) {
           suppAlg = new ScalarNSOElemSuppAlg(realm_, sdr_, dwdx_, evisc_, 1.0, 1.0);
         }
-        else if (sourceName == "NSO_KE_2ND" ) {
+        else if (sourceName == "NSO_2ND_KE" ) {
           const double turbSc = realm_.get_turb_schmidt(sdr_->name());
-          suppAlg = new ScalarKeNSOElemSuppAlg(realm_, sdr_, dwdx_, turbSc, 0.0);
+          suppAlg = new ScalarNSOKeElemSuppAlg(realm_, sdr_, dwdx_, turbSc, 0.0);
         }
-        else if (sourceName == "NSO_KE_4TH" ) {
+        else if (sourceName == "NSO_4TH_KE" ) {
           const double turbSc = realm_.get_turb_schmidt(sdr_->name());
-          suppAlg = new ScalarKeNSOElemSuppAlg(realm_, sdr_, dwdx_, turbSc, 1.0);
+          suppAlg = new ScalarNSOKeElemSuppAlg(realm_, sdr_, dwdx_, turbSc, 1.0);
         }
         else if (sourceName == "specific_dissipation_rate_time_derivative" ) {
           useCMM = true;
@@ -249,7 +253,9 @@ SpecificDissipationRateEquationSystem::register_interior_algorithm(
         }
         else {
           throw std::runtime_error("SpecificDissipationElemSrcTerms::Error Source term is not supported: " + sourceName);
-        }     
+        }
+        NaluEnv::self().naluOutputP0() << "SpecificDissipationElemSrcTerms::added() " << sourceName << std::endl;
+        theAlg->supplementalAlg_.push_back(suppAlg); 
       }
     }
   }
@@ -300,11 +306,10 @@ SpecificDissipationRateEquationSystem::register_interior_algorithm(
         else {
           throw std::runtime_error("SpecificDissipationRateNodalSrcTerms::Error Source term is not supported: " + sourceName);
         }
-        // add supplemental algorithm
+        NaluEnv::self().naluOutputP0() << "SpecificDissipationRateNodalSrcTerms::added() " << sourceName << std::endl;
         theAlg->supplementalAlg_.push_back(suppAlg);
       }
     }
-
   }
   else {
     itsm->second->partVec_.push_back(part);
@@ -362,7 +367,16 @@ SpecificDissipationRateEquationSystem::register_inflow_bc(
     = new AuxFunctionAlgorithm(realm_, part,
                                theBcField, theAuxFunc,
                                stk::topology::NODE_RANK);
-  bcDataAlg_.push_back(auxAlg);
+
+  // how to populate the field?
+  if ( userData.externalData_ ) {
+    // xfer will handle population; only need to populate the initial value
+    realm_.initCondAlg_.push_back(auxAlg);
+  }
+  else {
+    // put it on bcData
+    bcDataAlg_.push_back(auxAlg);
+  }
 
   // copy sdr_bc to specific_dissipation_rate np1...
   CopyFieldAlgorithm *theCopyAlg
@@ -533,64 +547,6 @@ SpecificDissipationRateEquationSystem::register_wall_bc(
   }
   else {
     it->second->partVec_.push_back(part);
-  }
-
-}
-
-//--------------------------------------------------------------------------
-//-------- register_contact_bc ---------------------------------------------
-//--------------------------------------------------------------------------
-void
-SpecificDissipationRateEquationSystem::register_contact_bc(
-  stk::mesh::Part *part,
-  const stk::topology &theTopo,
-  const ContactBoundaryConditionData &contactBCData) {
-
-  const AlgorithmType algType = CONTACT;
-
-  ScalarFieldType &sdrNp1 = sdr_->field_of_state(stk::mesh::StateNP1);
-  VectorFieldType &dwdxNone = dwdx_->field_of_state(stk::mesh::StateNone);
-  if ( realm_.realmUsesEdges_ ) {
-
-    // register halo_sdr if using the element-based projected nodal gradient
-    ScalarFieldType *haloSdr = NULL;
-    if ( !edgeNodalGradient_ ) {
-      stk::mesh::MetaData &meta_data = realm_.meta_data();
-      haloSdr = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "halo_sdr"));
-      stk::mesh::put_field(*haloSdr, *part);
-    }
-
-    // non-solver; contribution to dwdx
-    std::map<AlgorithmType, Algorithm *>::iterator it =
-      assembleNodalGradAlgDriver_->algMap_.find(algType);
-    if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
-      Algorithm *theAlg = NULL;
-      if ( edgeNodalGradient_ ) {
-        theAlg = new AssembleNodalGradEdgeContactAlgorithm(realm_, part, &sdrNp1, &dwdxNone);
-      }
-      else {
-        theAlg = new AssembleNodalGradElemContactAlgorithm(realm_, part, &sdrNp1, &dwdxNone, haloSdr);
-      }
-      assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
-    }
-    else {
-      it->second->partVec_.push_back(part);
-    }
-
-    // solver; lhs
-    std::map<AlgorithmType, SolverAlgorithm *>::iterator itsi =
-      solverAlgDriver_->solverAlgMap_.find(algType);
-    if ( itsi == solverAlgDriver_->solverAlgMap_.end() ) {
-      AssembleScalarEdgeContactSolverAlgorithm *theAlg
-        = new AssembleScalarEdgeContactSolverAlgorithm(realm_, part, this, sdr_, dwdx_, evisc_);
-      solverAlgDriver_->solverAlgMap_[algType] = theAlg;
-    }
-    else {
-      itsi->second->partVec_.push_back(part);
-    }
-  }
-  else {
-    throw std::runtime_error("Sorry, element-based contact not supported");
   }
 }
 

@@ -8,7 +8,6 @@
 
 #include <MixtureFractionEquationSystem.h>
 #include <AlgorithmDriver.h>
-#include <AssembleScalarEdgeContactSolverAlgorithm.h>
 #include <AssembleScalarEdgeOpenSolverAlgorithm.h>
 #include <AssembleScalarEdgeSolverAlgorithm.h>
 #include <AssembleScalarElemSolverAlgorithm.h>
@@ -18,8 +17,6 @@
 #include <AssembleNodalGradEdgeAlgorithm.h>
 #include <AssembleNodalGradElemAlgorithm.h>
 #include <AssembleNodalGradBoundaryAlgorithm.h>
-#include <AssembleNodalGradEdgeContactAlgorithm.h>
-#include <AssembleNodalGradElemContactAlgorithm.h>
 #include <AssembleNodalGradNonConformalAlgorithm.h>
 #include <AssembleNodeSolverAlgorithm.h>
 #include <AuxFunctionAlgorithm.h>
@@ -43,12 +40,14 @@
 #include <ScalarMassBackwardEulerNodeSuppAlg.h>
 #include <ScalarMassBDF2NodeSuppAlg.h>
 #include <ScalarMassElemSuppAlg.h>
-#include <ScalarNSOElemSuppAlg.h>
-#include <ScalarKeNSOElemSuppAlg.h>
 #include <Simulation.h>
 #include <SolutionOptions.h>
 #include <TimeIntegrator.h>
 #include <SolverAlgorithmDriver.h>
+
+// nso
+#include <nso/ScalarNSOElemSuppAlg.h>
+#include <nso/ScalarNSOKeElemSuppAlg.h>
 
 // user function
 #include <user_functions/VariableDensityMixFracSrcElemSuppAlg.h>
@@ -283,13 +282,13 @@ MixtureFractionEquationSystem::register_interior_algorithm(
         else if (sourceName == "NSO_4TH_ALT" ) {
           suppAlg = new ScalarNSOElemSuppAlg(realm_, mixFrac_, dzdx_, evisc_, 1.0, 1.0);
         }
-        else if (sourceName == "NSO_KE_2ND" ) {
+        else if (sourceName == "NSO_2ND_KE" ) {
           const double turbSc = realm_.get_turb_schmidt(mixFrac_->name());
-          suppAlg = new ScalarKeNSOElemSuppAlg(realm_, mixFrac_, dzdx_, turbSc, 0.0);
+          suppAlg = new ScalarNSOKeElemSuppAlg(realm_, mixFrac_, dzdx_, turbSc, 0.0);
         }
-        else if (sourceName == "NSO_KE_4TH" ) {
+        else if (sourceName == "NSO_4TH_KE" ) {
           const double turbSc = realm_.get_turb_schmidt(mixFrac_->name());
-          suppAlg = new ScalarKeNSOElemSuppAlg(realm_, mixFrac_, dzdx_, turbSc, 1.0);
+          suppAlg = new ScalarNSOKeElemSuppAlg(realm_, mixFrac_, dzdx_, turbSc, 1.0);
         }
         else if (sourceName == "mixture_fraction_time_derivative" ) {
           useCMM = true;
@@ -298,6 +297,7 @@ MixtureFractionEquationSystem::register_interior_algorithm(
         else {
           throw std::runtime_error("MixtureFractionElemSrcTerms::Error Source term is not supported: " + sourceName);
         }     
+        NaluEnv::self().naluOutputP0() << "MixtureFractionElemSrcTerms::added() " << sourceName << std::endl;
         theAlg->supplementalAlg_.push_back(suppAlg); 
       }
     }
@@ -347,7 +347,7 @@ MixtureFractionEquationSystem::register_interior_algorithm(
         else {
           throw std::runtime_error("MixtureFractionNodalSrcTerms::Error Source term is not supported: " + sourceName);
         }
-        // add supplemental algorithm
+        NaluEnv::self().naluOutputP0() << "MixtureFractionNodalSrcTerms::added() " << sourceName << std::endl;
         theAlg->supplementalAlg_.push_back(suppAlg);
       }
     }
@@ -427,7 +427,15 @@ MixtureFractionEquationSystem::register_inflow_bc(
                                theBcField, theAuxFunc,
                                stk::topology::NODE_RANK);
 
-  bcDataAlg_.push_back(auxAlg);
+  // how to populate the field?
+  if ( userData.externalData_ ) {
+    // xfer will handle population; only need to populate the initial value
+    realm_.initCondAlg_.push_back(auxAlg);
+  }
+  else {
+    // put it on bcData
+    bcDataAlg_.push_back(auxAlg);
+  }
 
   // copy mixFrac_bc to mixture_fraction np1...
   CopyFieldAlgorithm *theCopyAlg
@@ -614,67 +622,6 @@ MixtureFractionEquationSystem::register_wall_bc(
     else {
       it->second->partVec_.push_back(part);
     }
-  }
-}
-
-//--------------------------------------------------------------------------
-//-------- register_contact_bc ---------------------------------------------
-//--------------------------------------------------------------------------
-void
-MixtureFractionEquationSystem::register_contact_bc(
-  stk::mesh::Part *part,
-  const stk::topology &theTopo,
-  const ContactBoundaryConditionData &contactBCData) {
-
-  const AlgorithmType algType = CONTACT;
-
-  ScalarFieldType &mixFracNp1 = mixFrac_->field_of_state(stk::mesh::StateNP1);
-  VectorFieldType &dzdxNone = dzdx_->field_of_state(stk::mesh::StateNone);
-
-  if ( realm_.realmUsesEdges_ ) {
-
-    // register halo_z if using the element-based projected nodal gradient
-    ScalarFieldType *haloZ = NULL;
-    if ( !edgeNodalGradient_ ) {
-      stk::mesh::MetaData &meta_data = realm_.meta_data();
-      haloZ = &(meta_data.declare_field<ScalarFieldType>(stk::topology::NODE_RANK, "halo_z"));
-      stk::mesh::put_field(*haloZ, *part);
-    }
-
-    // non-solver; contribution to dzdx
-    if ( !managePNG_ ) {
-      std::map<AlgorithmType, Algorithm *>::iterator it =
-        assembleNodalGradAlgDriver_->algMap_.find(algType);
-      if ( it == assembleNodalGradAlgDriver_->algMap_.end() ) {
-        Algorithm *theAlg = NULL;
-        if ( edgeNodalGradient_ ) {
-          theAlg = new AssembleNodalGradEdgeContactAlgorithm(realm_, part, &mixFracNp1, &dzdxNone);
-        }
-        else {
-          theAlg = new AssembleNodalGradElemContactAlgorithm(realm_, part, &mixFracNp1, &dzdxNone, haloZ);
-        }
-        assembleNodalGradAlgDriver_->algMap_[algType] = theAlg;
-      }
-      else {
-        it->second->partVec_.push_back(part);
-      }
-    }
-
-    // solver; lhs
-    std::map<AlgorithmType, SolverAlgorithm *>::iterator itsi =
-      solverAlgDriver_->solverAlgMap_.find(algType);
-    if ( itsi == solverAlgDriver_->solverAlgMap_.end() ) {
-      AssembleScalarEdgeContactSolverAlgorithm *theAlg
-        = new AssembleScalarEdgeContactSolverAlgorithm(realm_, part, this,
-                                                       mixFrac_, dzdx_, evisc_);
-      solverAlgDriver_->solverAlgMap_[algType] = theAlg;
-    }
-    else {
-      itsi->second->partVec_.push_back(part);
-    }
-  }
-  else {
-    throw std::runtime_error("Sorry, element-based contact not supported");
   }
 }
 

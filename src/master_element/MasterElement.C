@@ -7,6 +7,7 @@
 
 
 #include <master_element/MasterElement.h>
+#include <NaluEnv.h>
 #include <FORTRAN_Proto.h>
 
 #include <stk_topology/topology.hpp>
@@ -23,6 +24,113 @@
 
 namespace sierra{
 namespace nalu{
+
+
+//--------------------------------------------------------------------------
+//-------- factory for surface master elements -----------------------------
+//--------------------------------------------------------------------------
+MasterElement*
+MasterElement::create_surface_master_element(stk::topology topo)
+{
+  switch ( topo.value() ) {
+
+    case stk::topology::HEX_8:
+      return new HexSCS();
+
+    case stk::topology::HEX_27:
+      return new Hex27SCS();
+
+    case stk::topology::TET_4:
+      return new TetSCS();
+
+    case stk::topology::PYRAMID_5:
+      return new PyrSCS();
+
+    case stk::topology::WEDGE_6:
+      return new WedSCS();
+
+    case stk::topology::QUAD_4:
+      return new Quad3DSCS();
+
+    case stk::topology::QUAD_9:
+      return new Quad93DSCS();
+
+    case stk::topology::TRI_3:
+      return new Tri3DSCS();
+
+    case stk::topology::QUAD_4_2D:
+      return new Quad2DSCS();
+
+    case stk::topology::QUAD_9_2D:
+      return new Quad92DSCS();
+
+    case stk::topology::TRI_3_2D:
+      return new Tri2DSCS();
+
+    case stk::topology::LINE_2:
+      return new Edge2DSCS();
+
+    case stk::topology::LINE_3:
+      return new Edge32DSCS();
+
+    case stk::topology::SHELL_QUAD_4:
+      NaluEnv::self().naluOutputP0() << "SHELL_QUAD_4 only supported for io surface transfer applications" << std::endl;
+      return new Quad3DSCS();
+
+    case stk::topology::SHELL_TRI_3:
+      NaluEnv::self().naluOutputP0() << "SHELL_TRI_3 only supported for io surface transfer applications" << std::endl;
+      return new Tri3DSCS();
+
+    default:
+      NaluEnv::self().naluOutputP0() << "sorry, we only support hex8, tet4, pyr5, wed6,"
+                                        " quad2d, quad3d, tri2d, tri3d and edge2d surface elements" << std::endl;
+      NaluEnv::self().naluOutputP0() << "your type is " << topo.value() << std::endl;
+      break;
+
+  }
+  return nullptr;
+}
+
+//--------------------------------------------------------------------------
+//-------- factory for volume master elements ------------------------------
+//--------------------------------------------------------------------------
+MasterElement*
+MasterElement::create_volume_master_element(stk::topology topo)
+{
+  switch ( topo.value() ) {
+
+    case stk::topology::HEX_8:
+      return new HexSCV();
+
+    case stk::topology::HEX_27:
+      return new Hex27SCV();
+
+    case stk::topology::TET_4:
+      return new TetSCV();
+
+    case stk::topology::PYRAMID_5:
+      return new PyrSCV();
+
+    case stk::topology::WEDGE_6:
+      return  new WedSCV();
+
+    case stk::topology::QUAD_4_2D:
+      return new Quad2DSCV();
+
+    case stk::topology::QUAD_9_2D:
+      return new Quad92DSCV();
+
+    case stk::topology::TRI_3_2D:
+      return new Tri2DSCV();
+
+    default:
+      NaluEnv::self().naluOutputP0() << "sorry, we only support hex8, tet4, wed6, "
+                                        " pyr5, quad4, and tri3 volume elements" << std::endl;
+      NaluEnv::self().naluOutputP0() << "your type is " << topo.value() << std::endl;
+      break;
+  }
+  return nullptr;
+}
 
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
@@ -330,51 +438,6 @@ HexSCS::HexSCS()
   nodeLoc_[18] =  0.5; nodeLoc_[19] =  0.5; nodeLoc_[20] =  0.5;
   // node 7
   nodeLoc_[21] = -0.5; nodeLoc_[22] =  0.5; nodeLoc_[23] =  0.5;
-
-  // mapping between exposed face and extruded element's overlapping face   
-  faceNodeOnExtrudedElem_.resize(24);
-  faceNodeOnExtrudedElem_[0]  = 1; faceNodeOnExtrudedElem_[1]  = 0; faceNodeOnExtrudedElem_[2]  = 4; faceNodeOnExtrudedElem_[3]  = 5;
-  faceNodeOnExtrudedElem_[4]  = 1; faceNodeOnExtrudedElem_[5]  = 0; faceNodeOnExtrudedElem_[6]  = 4; faceNodeOnExtrudedElem_[7]  = 5;
-  faceNodeOnExtrudedElem_[8]  = 1; faceNodeOnExtrudedElem_[9]  = 0; faceNodeOnExtrudedElem_[10] = 4; faceNodeOnExtrudedElem_[11] = 5;
-  faceNodeOnExtrudedElem_[12] = 0; faceNodeOnExtrudedElem_[13] = 4; faceNodeOnExtrudedElem_[14] = 5; faceNodeOnExtrudedElem_[15] = 1;
-  faceNodeOnExtrudedElem_[16] = 0; faceNodeOnExtrudedElem_[17] = 4; faceNodeOnExtrudedElem_[18] = 5; faceNodeOnExtrudedElem_[19] = 1;
-  faceNodeOnExtrudedElem_[20] = 1; faceNodeOnExtrudedElem_[21] = 0; faceNodeOnExtrudedElem_[22] = 4; faceNodeOnExtrudedElem_[23] = 5;
-
-  // mapping between exposed face and extruded element's opposing face
-  opposingNodeOnExtrudedElem_.resize(24);
-  opposingNodeOnExtrudedElem_[0]  = 2; opposingNodeOnExtrudedElem_[1]  = 3; opposingNodeOnExtrudedElem_[2]  = 7; opposingNodeOnExtrudedElem_[3]  = 6;
-  opposingNodeOnExtrudedElem_[4]  = 2; opposingNodeOnExtrudedElem_[5]  = 3; opposingNodeOnExtrudedElem_[6]  = 7; opposingNodeOnExtrudedElem_[7]  = 6;
-  opposingNodeOnExtrudedElem_[8]  = 2; opposingNodeOnExtrudedElem_[9]  = 3; opposingNodeOnExtrudedElem_[10] = 7; opposingNodeOnExtrudedElem_[11] = 6;
-  opposingNodeOnExtrudedElem_[12] = 3; opposingNodeOnExtrudedElem_[13] = 7; opposingNodeOnExtrudedElem_[14] = 6; opposingNodeOnExtrudedElem_[15] = 2;
-  opposingNodeOnExtrudedElem_[16] = 3; opposingNodeOnExtrudedElem_[17] = 7; opposingNodeOnExtrudedElem_[18] = 6; opposingNodeOnExtrudedElem_[19] = 2;
-  opposingNodeOnExtrudedElem_[20] = 2; opposingNodeOnExtrudedElem_[21] = 3; opposingNodeOnExtrudedElem_[22] = 7; opposingNodeOnExtrudedElem_[23] = 6;
-
-  // mapping between exposed face scs ips and halo edge
-  faceScsIpOnExtrudedElem_.resize(24);
-  faceScsIpOnExtrudedElem_[0]  = 1; faceScsIpOnExtrudedElem_[1]  = 3; faceScsIpOnExtrudedElem_[2]  = 7; faceScsIpOnExtrudedElem_[3]  = 5;
-  faceScsIpOnExtrudedElem_[4]  = 1; faceScsIpOnExtrudedElem_[5]  = 3; faceScsIpOnExtrudedElem_[6]  = 7; faceScsIpOnExtrudedElem_[7]  = 5;
-  faceScsIpOnExtrudedElem_[8]  = 1; faceScsIpOnExtrudedElem_[9]  = 3; faceScsIpOnExtrudedElem_[10] = 7; faceScsIpOnExtrudedElem_[11] = 5;
-  faceScsIpOnExtrudedElem_[12] = 3; faceScsIpOnExtrudedElem_[13] = 7; faceScsIpOnExtrudedElem_[14] = 5; faceScsIpOnExtrudedElem_[15] = 1;
-  faceScsIpOnExtrudedElem_[16] = 3; faceScsIpOnExtrudedElem_[17] = 7; faceScsIpOnExtrudedElem_[18] = 5; faceScsIpOnExtrudedElem_[19] = 1;
-  faceScsIpOnExtrudedElem_[20] = 1; faceScsIpOnExtrudedElem_[21] = 3; faceScsIpOnExtrudedElem_[22] = 7; faceScsIpOnExtrudedElem_[23] = 5;
-
-  // mapping between exposed face scs ips and exposed face edge
-  faceScsIpOnFaceEdges_.resize(24);
-  faceScsIpOnFaceEdges_[0]  = 0; faceScsIpOnFaceEdges_[1]  = 8; faceScsIpOnFaceEdges_[2]  = 4; faceScsIpOnFaceEdges_[3]  = 9;
-  faceScsIpOnFaceEdges_[4]  = 0; faceScsIpOnFaceEdges_[5]  = 8; faceScsIpOnFaceEdges_[6]  = 4; faceScsIpOnFaceEdges_[7]  = 9;
-  faceScsIpOnFaceEdges_[8]  = 0; faceScsIpOnFaceEdges_[9]  = 8; faceScsIpOnFaceEdges_[10] = 4; faceScsIpOnFaceEdges_[11] = 9;
-  faceScsIpOnFaceEdges_[12] = 8; faceScsIpOnFaceEdges_[13] = 4; faceScsIpOnFaceEdges_[14] = 9; faceScsIpOnFaceEdges_[15] = 0;
-  faceScsIpOnFaceEdges_[16] = 8; faceScsIpOnFaceEdges_[17] = 4; faceScsIpOnFaceEdges_[18] = 9; faceScsIpOnFaceEdges_[19] = 0;
-  faceScsIpOnFaceEdges_[20] = 0; faceScsIpOnFaceEdges_[21] = 8; faceScsIpOnFaceEdges_[22] = 4; faceScsIpOnFaceEdges_[23] = 9;
-  
-  // alignment of face:edge ordering and scsip area vector
-  edgeAlignedArea_.resize(24);
-  edgeAlignedArea_[0]  = -1.0; edgeAlignedArea_[1]  = +1.0; edgeAlignedArea_[2]  = +1.0; edgeAlignedArea_[3]  = -1.0;
-  edgeAlignedArea_[4]  = -1.0; edgeAlignedArea_[5]  = +1.0; edgeAlignedArea_[6]  = +1.0; edgeAlignedArea_[7]  = -1.0;
-  edgeAlignedArea_[8]  = -1.0; edgeAlignedArea_[9]  = +1.0; edgeAlignedArea_[10] = +1.0; edgeAlignedArea_[11] = -1.0;
-  edgeAlignedArea_[12] = +1.0; edgeAlignedArea_[13] = +1.0; edgeAlignedArea_[14] = -1.0; edgeAlignedArea_[15] = -1.0;
-  edgeAlignedArea_[16] = +1.0; edgeAlignedArea_[17] = +1.0; edgeAlignedArea_[18] = -1.0; edgeAlignedArea_[19] = -1.0;
-  edgeAlignedArea_[20] = -1.0; edgeAlignedArea_[21] = +1.0; edgeAlignedArea_[22] = +1.0; edgeAlignedArea_[23] = -1.0;
 }
 
 //--------------------------------------------------------------------------
@@ -960,51 +1023,6 @@ HexSCS::sidePcoords_to_elemPcoords(
   default:
     throw std::runtime_error("HexSCS::sideMap invalid ordinal");
   }
-}
-
-//--------------------------------------------------------------------------
-//-------- faceNodeOnExtrudedElem ------------------------------------------
-//--------------------------------------------------------------------------
-const int *
-HexSCS::faceNodeOnExtrudedElem()
-{
-  return &faceNodeOnExtrudedElem_[0];
-}
-
-//--------------------------------------------------------------------------
-//-------- opposingNodeOnExtrudedElem --------------------------------------
-//--------------------------------------------------------------------------
-const int *
-HexSCS::opposingNodeOnExtrudedElem()
-{
-  return &opposingNodeOnExtrudedElem_[0];
-}
-
-//--------------------------------------------------------------------------
-//-------- faceScsIpOnExtrudedElem -----------------------------------------
-//--------------------------------------------------------------------------
-const int *
-HexSCS::faceScsIpOnExtrudedElem()
-{
-  return &faceScsIpOnExtrudedElem_[0];
-}
-
-//--------------------------------------------------------------------------
-//-------- faceScsIpOnFaceEdges --------------------------------------------
-//--------------------------------------------------------------------------
-const int *
-HexSCS::faceScsIpOnFaceEdges()
-{
-  return &faceScsIpOnFaceEdges_[0];
-}
-
-//--------------------------------------------------------------------------
-//-------- edgeAlignedArea -------------------------------------------------
-//--------------------------------------------------------------------------
-const double *
-HexSCS::edgeAlignedArea()
-{
-  return &edgeAlignedArea_[0];
 }
 
 //--------------------------------------------------------------------------
@@ -1989,7 +2007,7 @@ Hex27SCS::set_boundary_info()
   const std::vector<int> stkFaceNodeMap = {
                                             0,  8,  1, 12, 25, 13,  4, 16,  5, // face 0(2): front face (cclockwise)
                                             1,  9,  2, 13, 24, 14,  5, 17,  6, // face 1(5): right face (cclockwise)
-                                            3, 10,  2, 15, 26, 14,  6, 18,  7, // face 2(3): back face  (clockwise)
+                                            3, 10,  2, 15, 26, 14,  7, 18,  6, // face 2(3): back face  (clockwise)
                                             0, 11,  3, 12, 23, 15,  4, 19,  7, // face 3(4): left face  (clockwise)
                                             0,  8,  1, 11, 21, 9,   3, 10,  2, // face 4(0): bottom face (clockwise)
                                             4, 16,  5, 19, 22,  17, 7, 18,  6  // face 5(1): top face (cclockwise)
@@ -2528,6 +2546,95 @@ void Hex27SCS::gij(
       &numIntPoints_,
       deriv,
       coords, gupperij, glowerij);
+}
+
+//--------------------------------------------------------------------------
+//-------- general_face_grad_op --------------------------------------------
+//--------------------------------------------------------------------------
+void 
+Hex27SCS::general_face_grad_op(
+  const int face_ordinal,
+  const double *isoParCoord,
+  const double *coords,
+  double *gradop,
+  double *det_j,
+  double *error)
+{
+  const int ipsPerFace = 1;
+  double faceShapeFuncDerivs[81];
+
+  hex27_shape_deriv(
+    ipsPerFace,
+    isoParCoord,
+    faceShapeFuncDerivs);
+
+  gradient( &coords[0],
+            faceShapeFuncDerivs,
+            &gradop[0],
+            &det_j[0] );
+  
+  if (det_j[0] <= 0.0) {
+    *error = 1.0;
+  }
+}
+
+//--------------------------------------------------------------------------
+//-------- sidePcoords_to_elemPcoords --------------------------------------
+//--------------------------------------------------------------------------
+void 
+Hex27SCS::sidePcoords_to_elemPcoords(
+  const int & side_ordinal,
+  const int & npoints,
+  const double *side_pcoords,
+  double *elem_pcoords)
+{
+  // each ME are -1:1, e.g., hex27:quad93d
+  switch (side_ordinal) {
+  case 0:
+    for (int i=0; i<npoints; i++) {
+      elem_pcoords[i*3+0] = side_pcoords[2*i+0];
+      elem_pcoords[i*3+1] = -1.0;
+      elem_pcoords[i*3+2] = side_pcoords[2*i+1];
+    }
+    break;
+  case 1:
+    for (int i=0; i<npoints; i++) {
+      elem_pcoords[i*3+0] = 1.0;
+      elem_pcoords[i*3+1] = side_pcoords[2*i+0];
+      elem_pcoords[i*3+2] = side_pcoords[2*i+1];
+    }
+    break;
+  case 2:
+    for (int i=0; i<npoints; i++) {
+      elem_pcoords[i*3+0] = -side_pcoords[2*i+0];
+      elem_pcoords[i*3+1] = 1.0;
+      elem_pcoords[i*3+2] = side_pcoords[2*i+1];
+    }
+    break;
+  case 3:
+    for (int i=0; i<npoints; i++) {
+      elem_pcoords[i*3+0] = -1.0;
+      elem_pcoords[i*3+1] = side_pcoords[2*i+1];
+      elem_pcoords[i*3+2] = side_pcoords[2*i+0];
+    }
+    break;
+  case 4:
+    for (int i=0; i<npoints; i++) {
+      elem_pcoords[i*3+0] = side_pcoords[2*i+1];
+      elem_pcoords[i*3+1] = side_pcoords[2*i+0];
+      elem_pcoords[i*3+2] = -1.0;
+    }
+    break;
+  case 5:
+    for (int i=0; i<npoints; i++) {
+      elem_pcoords[i*3+0] = side_pcoords[2*i+0];
+      elem_pcoords[i*3+1] = side_pcoords[2*i+1];
+      elem_pcoords[i*3+2] = 1.0;
+    }
+    break;
+  default:
+    throw std::runtime_error("HexSCS::sideMap invalid ordinal");
+  }
 }
 
 //--------------------------------------------------------------------------
@@ -4246,38 +4353,6 @@ Quad2DSCS::Quad2DSCS()
   ipNodeMap_[4] = 2;  ipNodeMap_[5] = 3;  
   // face 3;
   ipNodeMap_[6] = 3;  ipNodeMap_[7] = 0; 
-  
-  // mapping between exposed face and extruded element's overlapping face   
-  faceNodeOnExtrudedElem_.resize(8);
-  faceNodeOnExtrudedElem_[0] = 1; faceNodeOnExtrudedElem_[1] = 0;
-  faceNodeOnExtrudedElem_[2] = 1; faceNodeOnExtrudedElem_[3] = 0;
-  faceNodeOnExtrudedElem_[4] = 1; faceNodeOnExtrudedElem_[5] = 0;
-  faceNodeOnExtrudedElem_[6] = 1; faceNodeOnExtrudedElem_[7] = 0;
-
-  // mapping between exposed face and extruded element's opposing face
-  opposingNodeOnExtrudedElem_.resize(8);
-  opposingNodeOnExtrudedElem_[0] = 2; opposingNodeOnExtrudedElem_[1] = 3;
-  opposingNodeOnExtrudedElem_[2] = 2; opposingNodeOnExtrudedElem_[3] = 3;
-  opposingNodeOnExtrudedElem_[4] = 2; opposingNodeOnExtrudedElem_[5] = 3;
-  opposingNodeOnExtrudedElem_[6] = 2; opposingNodeOnExtrudedElem_[7] = 3;
-
-  // mapping between exposed face scs ips and halo edge
-  faceScsIpOnExtrudedElem_.resize(8);
-  faceScsIpOnExtrudedElem_[0] = 1; faceScsIpOnExtrudedElem_[1] = 3;
-  faceScsIpOnExtrudedElem_[2] = 1; faceScsIpOnExtrudedElem_[3] = 3;
-  faceScsIpOnExtrudedElem_[4] = 1; faceScsIpOnExtrudedElem_[5] = 3;
-  faceScsIpOnExtrudedElem_[6] = 1; faceScsIpOnExtrudedElem_[7] = 3;
-
-  // mapping between exposed face scs ips and exposed face edge
-  faceScsIpOnFaceEdges_.resize(4);
-  faceScsIpOnFaceEdges_[0] = 0; faceScsIpOnFaceEdges_[1] = 0;
-  faceScsIpOnFaceEdges_[2] = 0; faceScsIpOnFaceEdges_[3] = 0;
-  
-  // alignment of face:edge ordering and scsip area vector
-  edgeAlignedArea_.resize(4);
-  edgeAlignedArea_[0] = -1.0; edgeAlignedArea_[1] = -1.0;
-  edgeAlignedArea_[2] = -1.0; edgeAlignedArea_[3] = -1.0;
-
 }
 
 //--------------------------------------------------------------------------
@@ -4727,51 +4802,6 @@ Quad2DSCS::sidePcoords_to_elemPcoords(
   default:
     throw std::runtime_error("Quad2DSCS::sideMap invalid ordinal");
   }
-}
-
-//--------------------------------------------------------------------------
-//-------- faceNodeOnExtrudedElem ------------------------------------------
-//--------------------------------------------------------------------------
-const int *
-Quad2DSCS::faceNodeOnExtrudedElem()
-{
-  return &faceNodeOnExtrudedElem_[0];
-}
-
-//--------------------------------------------------------------------------
-//-------- opposingNodeOnExtrudedElem --------------------------------------
-//--------------------------------------------------------------------------
-const int *
-Quad2DSCS::opposingNodeOnExtrudedElem()
-{
-  return &opposingNodeOnExtrudedElem_[0];
-}
-
-//--------------------------------------------------------------------------
-//-------- faceScsIpOnExtrudedElem -----------------------------------------
-//--------------------------------------------------------------------------
-const int *
-Quad2DSCS::faceScsIpOnExtrudedElem()
-{
-  return &faceScsIpOnExtrudedElem_[0];
-}
-
-//--------------------------------------------------------------------------
-//-------- faceScsIpOnFaceEdges --------------------------------------------
-//--------------------------------------------------------------------------
-const int *
-Quad2DSCS::faceScsIpOnFaceEdges()
-{
-  return &faceScsIpOnFaceEdges_[0];
-}
-
-//--------------------------------------------------------------------------
-//-------- edgeAlignedArea -------------------------------------------------
-//--------------------------------------------------------------------------
-const double *
-Quad2DSCS::edgeAlignedArea()
-{
-  return &edgeAlignedArea_[0];
 }
 
 //--------------------------------------------------------------------------
@@ -6679,6 +6709,68 @@ Quad3DSCS::general_shape_fcn(
 }
 
 //--------------------------------------------------------------------------
+//-------- general_normal --------------------------------------------------
+//--------------------------------------------------------------------------
+void
+Quad3DSCS::general_normal(
+  const double *isoParCoord,
+  const double *coords,
+  double *normal)
+{
+  const int nDim = 3;
+
+  const double psi0Xi = -0.25 * (1.0 - isoParCoord[1]);
+  const double psi1Xi =  0.25 * (1.0 - isoParCoord[1]);
+  const double psi2Xi =  0.25 * (1.0 + isoParCoord[1]);
+  const double psi3Xi = -0.25 * (1.0 + isoParCoord[1]);
+  
+  const double psi0Eta =-0.25 * (1.0 - isoParCoord[0]);
+  const double psi1Eta =-0.25 * (1.0 + isoParCoord[0]);
+  const double psi2Eta = 0.25 * (1.0 + isoParCoord[0]);
+  const double psi3Eta = 0.25 * (1.0 - isoParCoord[0]);
+  
+  const double DxDxi = coords[0*nDim+0]*psi0Xi +
+    coords[1*nDim+0]*psi1Xi +
+    coords[2*nDim+0]*psi2Xi +
+    coords[3*nDim+0]*psi3Xi;  
+      
+  const double DyDxi = coords[0*nDim+1]*psi0Xi +
+    coords[1*nDim+1]*psi1Xi +
+    coords[2*nDim+1]*psi2Xi +
+    coords[3*nDim+1]*psi3Xi;
+  
+  const double DzDxi = coords[0*nDim+2]*psi0Xi +
+    coords[1*nDim+2]*psi1Xi +
+    coords[2*nDim+2]*psi2Xi +
+    coords[3*nDim+2]*psi3Xi;
+  
+  const double DxDeta = coords[0*nDim+0]*psi0Eta +
+    coords[1*nDim+0]*psi1Eta +
+    coords[2*nDim+0]*psi2Eta +
+    coords[3*nDim+0]*psi3Eta;
+
+  const double DyDeta = coords[0*nDim+1]*psi0Eta +
+    coords[1*nDim+1]*psi1Eta +
+    coords[2*nDim+1]*psi2Eta +
+    coords[3*nDim+1]*psi3Eta;
+  
+  const double DzDeta = coords[0*nDim+2]*psi0Eta +
+    coords[1*nDim+2]*psi1Eta +
+    coords[2*nDim+2]*psi2Eta +
+    coords[3*nDim+2]*psi3Eta;
+  
+  const double detXY =  DxDxi*DyDeta - DxDeta*DyDxi;
+  const double detYZ =  DyDxi*DzDeta - DyDeta*DzDxi;
+  const double detXZ = -DxDxi*DzDeta + DxDeta*DzDxi;
+  
+  const double det = std::sqrt( detXY*detXY + detYZ*detYZ + detXZ*detXZ );
+    
+  normal[0] = detYZ / det;
+  normal[1] = detXZ / det;
+  normal[2] = detXY / det;
+}
+
+//--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
 Quad93DSCS::Quad93DSCS()
@@ -7109,6 +7201,127 @@ Quad93DSCS::interpolatePoint(
 }
 
 //--------------------------------------------------------------------------
+//-------- general_shape_fcn -----------------------------------------------
+//--------------------------------------------------------------------------
+void
+Quad93DSCS::general_shape_fcn(
+  const int numIp,
+  const double *isoParCoord,
+  double *shpfc)
+{
+  quad9_shape_fcn(numIp, isoParCoord, shpfc);
+}
+
+//--------------------------------------------------------------------------
+//-------- general_normal --------------------------------------------------
+//--------------------------------------------------------------------------
+void
+Quad93DSCS::general_normal(
+  const double *isoParCoord,
+  const double *coords,
+  double *normal)
+{
+  // coords(3,9)
+  const int nDim = 3;
+
+  const double s = isoParCoord[0];
+  const double t = isoParCoord[1];
+  
+  const double t2 = t*t;
+  const double s2 = s*s;
+  
+  const double psi0Xi  =  0.25 * (2.0 * s  * t2 - 2.0*s*t-t2+t);
+  const double psi1Xi  =  0.25 * (2.0 * s  * t2 - 2.0*s*t+t2-t);
+  const double psi2Xi  =  0.25 * (2.0 * s  * t2 + 2.0*s*t+t2+t);
+  const double psi3Xi  =  0.25 * (2.0 * s  * t2 + 2.0*s*t-t2-t);
+  const double psi4Xi  =  -0.5 * (2.0 * s  * t2 - 2.0*s*t);
+  const double psi5Xi  =  -0.5 * (2.0 * s  * t2 + t2 - 2.0*s-1.0);
+  const double psi6Xi  =  -0.5 * (2.0 * s  * t2 + 2.0*s*t);
+  const double psi7Xi  =  -0.5 * (2.0 * s  * t2 - t2 - 2.0*s+1.0);
+  const double psi8Xi  =          2.0 * s  * t2      - 2.0*s;
+  
+  const double psi0Eta = 0.25 * (2.0 * s2 * t  - 2.0*s*t-s2+s);
+  const double psi1Eta = 0.25 * (2.0 * s2 * t  + 2.0*s*t-s2-s);
+  const double psi2Eta = 0.25 * (2.0 * s2 * t  + 2.0*s*t+s2+s);
+  const double psi3Eta = 0.25 * (2.0 * s2 * t  - 2.0*s*t+s2-s);
+  const double psi4Eta = -0.5 * (2.0 * s2 * t  - s2 - 2.0*t+1.0);
+  const double psi5Eta = -0.5 * (2.0 * s2 * t  + 2.0*s*t);
+  const double psi6Eta = -0.5 * (2.0 * s2 * t  + s2 - 2.0*t-1.0);
+  const double psi7Eta = -0.5 * (2.0 * s2 * t  - 2.0*s*t);
+  const double psi8Eta =         2.0 * s2 * t       - 2.0*t;
+  
+  const double DxDxi = coords[0*nDim+0]*psi0Xi +
+    coords[1*nDim+0]*psi1Xi +
+    coords[2*nDim+0]*psi2Xi +
+    coords[3*nDim+0]*psi3Xi +
+    coords[4*nDim+0]*psi4Xi +
+    coords[5*nDim+0]*psi5Xi +
+    coords[6*nDim+0]*psi6Xi +
+    coords[7*nDim+0]*psi7Xi +
+    coords[8*nDim+0]*psi8Xi;
+  
+  const double DyDxi = coords[0*nDim+1]*psi0Xi +
+    coords[1*nDim+1]*psi1Xi +
+    coords[2*nDim+1]*psi2Xi +
+    coords[3*nDim+1]*psi3Xi +
+    coords[4*nDim+1]*psi4Xi +
+    coords[5*nDim+1]*psi5Xi +
+    coords[6*nDim+1]*psi6Xi +
+    coords[7*nDim+1]*psi7Xi +
+    coords[8*nDim+1]*psi8Xi;
+  
+  const double DzDxi = coords[0*nDim+2]*psi0Xi +
+    coords[1*nDim+2]*psi1Xi +
+    coords[2*nDim+2]*psi2Xi +
+    coords[3*nDim+2]*psi3Xi +
+    coords[4*nDim+2]*psi4Xi +
+    coords[5*nDim+2]*psi5Xi +
+    coords[6*nDim+2]*psi6Xi +
+    coords[7*nDim+2]*psi7Xi +
+    coords[8*nDim+2]*psi8Xi;
+  
+  const double DxDeta = coords[0*nDim+0]*psi0Eta +
+    coords[1*nDim+0]*psi1Eta +
+    coords[2*nDim+0]*psi2Eta +
+    coords[3*nDim+0]*psi3Eta +
+    coords[4*nDim+0]*psi4Eta +
+    coords[5*nDim+0]*psi5Eta +
+    coords[6*nDim+0]*psi6Eta +
+    coords[7*nDim+0]*psi7Eta +
+    coords[8*nDim+0]*psi8Eta;
+  
+  const double DyDeta = coords[0*nDim+1]*psi0Eta +
+    coords[1*nDim+1]*psi1Eta +
+    coords[2*nDim+1]*psi2Eta +
+    coords[3*nDim+1]*psi3Eta +
+    coords[4*nDim+1]*psi4Eta +
+    coords[5*nDim+1]*psi5Eta +
+    coords[6*nDim+1]*psi6Eta +
+    coords[7*nDim+1]*psi7Eta +
+    coords[8*nDim+1]*psi8Eta;
+
+  const double DzDeta = coords[0*nDim+2]*psi0Eta +
+    coords[1*nDim+2]*psi1Eta +
+    coords[2*nDim+2]*psi2Eta +
+    coords[3*nDim+2]*psi3Eta +
+    coords[4*nDim+2]*psi4Eta +
+    coords[5*nDim+2]*psi5Eta +
+    coords[6*nDim+2]*psi6Eta +
+    coords[7*nDim+2]*psi7Eta +
+    coords[8*nDim+2]*psi8Eta;
+  
+  const double detXY =  DxDxi*DyDeta - DxDeta*DyDxi;
+  const double detYZ =  DyDxi*DzDeta - DyDeta*DzDxi;
+  const double detXZ = -DxDxi*DzDeta + DxDeta*DzDxi;
+  
+  const double det = std::sqrt( detXY*detXY + detYZ*detYZ + detXZ*detXZ );
+  
+  normal[0] = detYZ / det;
+  normal[1] = detXZ / det;
+  normal[2] = detXY / det;
+}
+
+//--------------------------------------------------------------------------
 //-------- non_unit_face_normal --------------------------------------------
 //--------------------------------------------------------------------------
 void
@@ -7460,7 +7673,37 @@ Tri3DSCS::general_shape_fcn(
   const double *isoParCoord,
   double *shpfc)
 {
-  tri_shape_fcn(numIp, &isoParCoord[0], shpfc);
+  tri_shape_fcn(numIp, isoParCoord, shpfc);
+}
+
+
+//--------------------------------------------------------------------------
+//-------- general_normal --------------------------------------------------
+//--------------------------------------------------------------------------
+void
+Tri3DSCS::general_normal(
+  const double */*isoParCoord*/,
+  const double *coords,
+  double *normal)
+{
+  // can be only linear
+  const double ax  = coords[3] - coords[0];
+  const double ay  = coords[4] - coords[1];
+  const double az  = coords[5] - coords[2];
+  const double bx  = coords[6] - coords[0];
+  const double by  = coords[7] - coords[1];
+  const double bz  = coords[8] - coords[2];
+
+  normal[0] = ( ay*bz - az*by );
+  normal[1] = ( az*bx - ax*bz );
+  normal[2] = ( ax*by - ay*bx );
+
+  const double mag = std::sqrt( normal[0]*normal[0] +
+                                normal[1]*normal[1] +
+                                normal[2]*normal[2] );
+  normal[0] /= mag;
+  normal[1] /= mag;
+  normal[2] /= mag;
 }
 
 //--------------------------------------------------------------------------
@@ -7642,6 +7885,23 @@ Edge2DSCS::general_shape_fcn(
   }
 }
 
+//--------------------------------------------------------------------------
+//-------- general_normal --------------------------------------------------
+//--------------------------------------------------------------------------
+void
+Edge2DSCS::general_normal(
+  const double */*isoParCoord*/,
+  const double *coords,
+  double *normal)
+{
+  // can be only linear
+  const double dx  = coords[2] - coords[0];
+  const double dy  = coords[3] - coords[1];
+  const double mag = std::sqrt(dx*dx + dy*dy);
+
+  normal[0] =  dy/mag;
+  normal[1] = -dx/mag;
+}
 
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------

@@ -357,6 +357,24 @@ EquationSystem::get_bc_function_params(
 }
 
 //--------------------------------------------------------------------------
+//-------- get_bc_function_string_params -----------------------------------
+//--------------------------------------------------------------------------
+std::vector<std::string>
+EquationSystem::get_bc_function_string_params(
+  const UserData &userData, std::string &name)
+{
+  std::vector<std::string> theParams;
+  std::map<std::string, std::vector<std::string> >::const_iterator iter
+    = userData.functionStringParams_.find(name);
+  if ( iter != userData.functionStringParams_.end() ) {
+    return (*iter).second;
+  }
+  else {
+    return theParams;
+  }
+}
+
+//--------------------------------------------------------------------------
 //-------- create_constraint_algorithm -------------------------------------
 //--------------------------------------------------------------------------
 void
@@ -398,15 +416,15 @@ EquationSystem::create_peclet_function(
   const std::string dofName)
 {
   PecletFunction *pecletFunction = NULL;
-  if ( "classic" == realm_.get_peclet_functional_form(dofName) ) { 
+  if ( "classic" == realm_.get_tanh_functional_form(dofName) ) { 
     const double hybridFactor = realm_.get_hybrid_factor(dofName);
     const double A = 5.0;
     pecletFunction = new ClassicPecletFunction(A, hybridFactor);
   }
   else {
-    const double c1 = realm_.get_peclet_tanh_trans(dofName);
-    const double c2 = realm_.get_peclet_tanh_width(dofName);
-    pecletFunction = new TanhPecletFunction(c1, c2);
+    const double c1 = realm_.get_tanh_trans(dofName);
+    const double c2 = realm_.get_tanh_width(dofName);
+    pecletFunction = new TanhFunction(c1, c2);
   }
   return pecletFunction;
 }
