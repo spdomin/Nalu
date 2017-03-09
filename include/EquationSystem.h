@@ -40,7 +40,8 @@ public:
 
   EquationSystem(
     EquationSystems& eqSystems,
-    const std::string name = "no_name");
+    const std::string name = "no_name",
+    const std::string eqnTypeName = "no_eqn_type_name");
   virtual ~EquationSystem();
 
   void set_nodal_gradient(
@@ -143,9 +144,17 @@ public:
   Simulation *root();
   EquationSystems *parent();
 
+  void report_invalid_supp_alg_names();
+  void report_built_supp_alg_names();
+  bool supp_alg_is_requested(std::string name);
+  bool supp_alg_is_requested(std::vector<std::string>);
+
+  bool nodal_src_is_requested();
+
   EquationSystems &equationSystems_;
   Realm &realm_;
   std::string name_;
+  const std::string eqnTypeName_;
   int maxIterations_;
   double convergenceTolerance_;
 
@@ -203,7 +212,7 @@ public:
 
   // owner equation system
   /*EquationSystem *ownerEqs_;*/
-  
+
 };
 
 } // namespace nalu

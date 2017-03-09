@@ -9,6 +9,7 @@
 #include <Realm.h>
 #include <Simulation.h>
 #include <NaluEnv.h>
+#include <InterfaceBalancer.h>
 
 // percept
 #if defined (NALU_USES_PERCEPT)
@@ -55,6 +56,7 @@
 
 // actuator line
 #include <ActuatorLine.h>
+#include <ABLForcingAlgorithm.h>
 
 // props; algs, evaluators and data
 #include <property_evaluator/GenericPropAlgorithm.h>
@@ -94,7 +96,7 @@
 #include <stk_mesh/base/MetaData.hpp>
 #include <stk_mesh/base/Comm.hpp>
 #include <stk_mesh/base/CreateEdges.hpp>
-#include <stk_mesh/base/SkinMesh.hpp>
+#include <stk_mesh/base/SkinBoundary.hpp>
 
 // stk_io
 #include <stk_io/StkMeshIoBroker.hpp>
@@ -173,6 +175,7 @@ namespace nalu{
     turbulenceAveragingPostProcessing_(NULL),
     dataProbePostProcessing_(NULL),
     actuatorLine_(NULL),
+    ablForcingAlg_(NULL),
     nodeCount_(0),
     estimateMemoryOnly_(false),
     availableMemoryPerCoreGB_(0),
@@ -211,6 +214,8 @@ namespace nalu{
     activateAura_(false),
     activateMemoryDiagnostic_(false),
     supportInconsistentRestart_(false),
+    doBalanceNodes_(false),
+    balanceNodeOptions_(),
     wallTimeStart_(stk::wall_time())
 {
   // deal with specialty options that live off of the realm; 
@@ -284,6 +289,12 @@ Realm::~Realm()
   // delete HDF5 file ptr
   if ( NULL != HDF5ptr_ )
     delete HDF5ptr_;
+
+  // Delete actuator line
+  if (NULL != actuatorLine_) delete actuatorLine_;
+
+  // Delete abl forcing pointer
+  if (NULL != ablForcingAlg_) delete ablForcingAlg_;
 }
 
 void
@@ -414,6 +425,10 @@ Realm::initialize()
   timerPopulateMesh_ += time;
   NaluEnv::self().naluOutputP0() << "Realm::ioBroker_->populate_mesh() End" << std::endl;
 
+  if (doBalanceNodes_) {
+    balance_nodes();
+  }
+
   // If we want to create all internal edges, we want to do it before
   // field-data is allocated because that allows better performance in
   // the create-edges code.
@@ -522,6 +537,12 @@ Realm::look_ahead_and_creation(const YAML::Node & node)
       throw std::runtime_error("look_ahead_and_create::error: Too many actuator line blocks");
     actuatorLine_ =  new ActuatorLine(*this, *foundActuatorLine[0]);
   }
+
+  // ABL Forcing parameters
+  if (node["abl_forcing"]) {
+    const YAML::Node ablNode = node["abl_forcing"];
+    ablForcingAlg_ = new ABLForcingAlgorithm(*this, ablNode);
+  }
 }
   
 //--------------------------------------------------------------------------
@@ -596,6 +617,14 @@ Realm::load(const YAML::Node & node)
     get_if_present(y_time_step, "target_courant", targetCourant_, targetCourant_);
     get_if_present(y_time_step, "time_step_change_factor", timeStepChangeFactor_, timeStepChangeFactor_);
   }
+
+  get_if_present(node, "balance_nodes", doBalanceNodes_, doBalanceNodes_);
+  get_if_present(node, "balance_nodes_iterations", balanceNodeOptions_.numIters, balanceNodeOptions_.numIters);
+  get_if_present(node, "balance_nodes_target", balanceNodeOptions_.target, balanceNodeOptions_.target);
+  if (node["balance_nodes_iterations"] || node["balance_nodes_target"] ) {
+    doBalanceNodes_ = true;
+  }
+
 
   //======================================
   // now other commands/actions
@@ -803,6 +832,9 @@ Realm::setup_post_processing_algorithms()
   if ( NULL != actuatorLine_ )
     actuatorLine_->setup();
 
+  if ( NULL != ablForcingAlg_)
+    ablForcingAlg_->setup();
+
   // check for norm nodal fields
   if ( NULL != solutionNormPostProcessing_ )
     solutionNormPostProcessing_->setup();
@@ -862,7 +894,7 @@ Realm::enforce_bc_on_exposed_faces()
   stk::mesh::Selector activePart = metaData_->locally_owned_part() | metaData_->globally_shared_part();
   stk::mesh::PartVector partVec;
   partVec.push_back(exposedBoundaryPart_);
-  stk::mesh::skin_mesh(*bulkData_, activePart, partVec);
+  stk::mesh::create_exposed_block_boundary_sides(*bulkData_, activePart, partVec);
 
   stk::mesh::Selector selectRule = stk::mesh::Selector(*exposedBoundaryPart_)
     & !stk::mesh::selectUnion(bcPartVec_);
@@ -1762,6 +1794,11 @@ Realm::advance_time_step()
     actuatorLine_->execute();
   }
 
+  // Check for ABL forcing; estimate source terms for this time step
+  if ( NULL != ablForcingAlg_) {
+    ablForcingAlg_->execute();
+  }
+
   const int numNonLinearIterations = equationSystems_.maxIterations_;
   for ( int i = 0; i < numNonLinearIterations; ++i ) {
     currentNonlinearIteration_ = i+1;
@@ -2247,6 +2284,10 @@ Realm::initialize_post_processing_algorithms()
   // check for actuator line... probably a better place for this
   if ( NULL != actuatorLine_ ) {
     actuatorLine_->initialize();
+  }
+
+  if ( NULL != ablForcingAlg_) {
+    ablForcingAlg_->initialize();
   }
 }
 
@@ -2955,17 +2996,17 @@ Realm::register_periodic_bc(
 //--------------------------------------------------------------------------
 void
 Realm::setup_non_conformal_bc(
-  stk::mesh::Part *currentPart,
-  stk::mesh::Part *opposingPart,
+  stk::mesh::PartVector currentPartVec,
+  stk::mesh::PartVector opposingPartVec,
   const NonConformalBoundaryConditionData &nonConformalBCData)
 {
-
   hasNonConformal_ = true;
   
   // extract data
   NonConformalUserData userData = nonConformalBCData.userData_;
 
   // extract params useful for search
+  const std::string debugName = nonConformalBCData.targetName_;
   const std::string searchMethodName = userData.searchMethodName_;
   const double expandBoxPercentage = userData.expandBoxPercentage_/100.0;
   const bool clipIsoParametricCoords = userData.clipIsoParametricCoords_; 
@@ -2982,12 +3023,13 @@ Realm::setup_non_conformal_bc(
   // create nonconformal info for this surface
   NonConformalInfo *nonConformalInfo
     = new NonConformalInfo(*this,
-                           currentPart,
-                           opposingPart,
+                           currentPartVec,
+                           opposingPartVec,
                            expandBoxPercentage,
                            searchMethodName,
                            clipIsoParametricCoords,
-                           searchTolerance);
+                           searchTolerance,
+                           debugName);
   
   nonConformalManager_->nonConformalInfoVec_.push_back(nonConformalInfo);
 }
@@ -3963,15 +4005,6 @@ Realm::has_nc_gauss_labatto_quadrature()
 }
 
 //--------------------------------------------------------------------------
-//-------- get_nc_alg_type -------------------------------------------------
-//--------------------------------------------------------------------------
-NonConformalAlgType
-Realm::get_nc_alg_type()
-{
-  return solutionOptions_->ncAlgType_;
-}
-
-//--------------------------------------------------------------------------
 //-------- get_nc_alg_upwind_advection -------------------------------------
 //--------------------------------------------------------------------------
 bool
@@ -4370,8 +4403,13 @@ Realm::get_inactive_selector()
   stk::mesh::Selector inactiveDataProbeSelector = (NULL != dataProbePostProcessing_) 
     ? (dataProbePostProcessing_->get_inactive_selector())
     : stk::mesh::Selector();
+
+  stk::mesh::Selector inactiveABLForcing = (
+    ( NULL != ablForcingAlg_)
+    ? (ablForcingAlg_->inactive_selector())
+    : stk::mesh::Selector());
   
-  return inactiveOverSetSelector | inactiveDataProbeSelector;
+  return inactiveOverSetSelector | inactiveDataProbeSelector | inactiveABLForcing;
 }
 
 //--------------------------------------------------------------------------
@@ -4412,6 +4450,15 @@ Realm::get_tanh_blending(
     omegaBlend = tanhFunction.execute(currentTime);
   }
   return omegaBlend;
+}
+
+//--------------------------------------------------------------------------
+//-------- balance_nodes() ---------------------------------------------
+//--------------------------------------------------------------------------
+void Realm::balance_nodes()
+{
+  InterfaceBalancer balancer(meta_data(), bulk_data());
+  balancer.balance_node_entities(balanceNodeOptions_.target, balanceNodeOptions_.numIters);
 }
 
 } // namespace nalu

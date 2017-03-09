@@ -72,6 +72,7 @@ class SolutionNormPostProcessing;
 class TurbulenceAveragingPostProcessing;
 class DataProbePostProcessing;
 class ActuatorLine;
+class ABLForcingAlgorithm;
 
 class Realm {
  public:
@@ -121,6 +122,8 @@ class Realm {
   void makeSureNodesHaveValidTopology();
 
   void initialize_global_variables();
+
+  void balance_nodes();
 
   void create_output_mesh();
   void create_restart_mesh();
@@ -205,8 +208,8 @@ class Realm {
     const std::string &searchMethodName);
 
   void setup_non_conformal_bc(
-    stk::mesh::Part *currentPart,
-    stk::mesh::Part *opposingPart,
+    stk::mesh::PartVector currentPartVec,
+    stk::mesh::PartVector opposingPartVec,
     const NonConformalBoundaryConditionData &nonConformalBCData);
 
   void register_non_conformal_bc(
@@ -307,7 +310,6 @@ class Realm {
   bool get_cvfem_reduced_sens_poisson();
   
   bool has_nc_gauss_labatto_quadrature();
-  NonConformalAlgType get_nc_alg_type();
   bool get_nc_alg_upwind_advection();
   bool get_nc_alg_include_pstab();
   bool get_nc_alg_current_normal();
@@ -407,6 +409,7 @@ class Realm {
   TurbulenceAveragingPostProcessing *turbulenceAveragingPostProcessing_;
   DataProbePostProcessing *dataProbePostProcessing_;
   ActuatorLine *actuatorLine_;
+  ABLForcingAlgorithm *ablForcingAlg_;
 
   std::vector<Algorithm *> propertyAlg_;
   std::map<PropertyIdentifier, ScalarFieldType *> propertyMap_;
@@ -478,6 +481,19 @@ class Realm {
 
   // sometimes restarts can be missing states or dofs
   bool supportInconsistentRestart_;
+
+  bool doBalanceNodes_;
+  struct BalanceNodeOptions
+  {
+    BalanceNodeOptions() :
+      target(1.0),
+      numIters(5)
+    {};
+
+    double target;
+    int numIters;
+  };
+  BalanceNodeOptions balanceNodeOptions_;
 
   // beginning wall time
   double wallTimeStart_;

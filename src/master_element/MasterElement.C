@@ -211,6 +211,17 @@ HexSCV::HexSCV()
   intgLoc_[15] = +0.25; intgLoc_[16] = -0.25; intgLoc_[17] = +0.25;
   intgLoc_[18] = +0.25; intgLoc_[19] = +0.25; intgLoc_[20] = +0.25;
   intgLoc_[21] = -0.25; intgLoc_[22] = +0.25; intgLoc_[23] = +0.25;
+
+  // shifted integration location
+  intgLocShift_.resize(24);    
+  intgLocShift_[0]  = -0.5; intgLocShift_[1]  = -0.5; intgLocShift_[2]  = -0.5; 
+  intgLocShift_[3]  = +0.5; intgLocShift_[4]  = -0.5; intgLocShift_[5]  = -0.5; 
+  intgLocShift_[6]  = +0.5; intgLocShift_[7]  = +0.5; intgLocShift_[8]  = -0.5;
+  intgLocShift_[9]  = -0.5; intgLocShift_[10] = +0.5; intgLocShift_[11] = -0.5;
+  intgLocShift_[12] = -0.5; intgLocShift_[13] = -0.5; intgLocShift_[14] = +0.5;
+  intgLocShift_[15] = +0.5; intgLocShift_[16] = -0.5; intgLocShift_[17] = +0.5;
+  intgLocShift_[18] = +0.5; intgLocShift_[19] = +0.5; intgLocShift_[20] = +0.5;
+  intgLocShift_[21] = -0.5; intgLocShift_[22] = +0.5; intgLocShift_[23] = +0.5;
 }
 
 //--------------------------------------------------------------------------
@@ -284,6 +295,16 @@ HexSCV::shape_fcn(double *shpfc)
 {
   SIERRA_FORTRAN(hex_shape_fcn)
     (&numIntPoints_,&intgLoc_[0],shpfc);
+}
+
+//--------------------------------------------------------------------------
+//-------- shifted_shape_fcn -----------------------------------------------
+//--------------------------------------------------------------------------
+void
+HexSCV::shifted_shape_fcn(double *shpfc)
+{
+  SIERRA_FORTRAN(hex_shape_fcn)
+    (&numIntPoints_,&intgLocShift_[0],shpfc);
 }
 
 //--------------------------------------------------------------------------
@@ -2650,6 +2671,22 @@ TetSCV::TetSCV()
   // define ip node mappings
   ipNodeMap_.resize(4);
   ipNodeMap_[0] = 0; ipNodeMap_[1] = 1; ipNodeMap_[2] = 2; ipNodeMap_[3] = 3;
+
+  // standard integration location
+  intgLoc_.resize(12);
+  const double seventeen96ths = 17.0/96.0;
+  const double fourfive96ths  = 45.0/96.0;
+  intgLoc_[0] = seventeen96ths; intgLoc_[1]  = seventeen96ths; intgLoc_[2]  = seventeen96ths; // vol 1
+  intgLoc_[3] = fourfive96ths;  intgLoc_[4]  = seventeen96ths; intgLoc_[5]  = seventeen96ths; // vol 2
+  intgLoc_[6] = seventeen96ths; intgLoc_[7]  = fourfive96ths;  intgLoc_[8]  = seventeen96ths; // vol 3
+  intgLoc_[9] = seventeen96ths; intgLoc_[10] = seventeen96ths; intgLoc_[11] = fourfive96ths;  // vol 4
+
+  // shifted
+  intgLocShift_.resize(12);
+  intgLocShift_[0] = 0.0; intgLocShift_[1]  = 0.0;  intgLocShift_[2] = 0.0;
+  intgLocShift_[3] = 1.0; intgLocShift_[4]  = 0.0;  intgLocShift_[5] = 0.0;
+  intgLocShift_[6] = 0.0; intgLocShift_[7]  = 1.0;  intgLocShift_[8] = 0.0;
+  intgLocShift_[9] = 0.0; intgLocShift_[10] = 0.0; intgLocShift_[11] = 1.0;
 }
 
 //--------------------------------------------------------------------------
@@ -2685,6 +2722,46 @@ void TetSCV::determinant(
   SIERRA_FORTRAN(tet_scv_det)
     ( &nelem, &nodesPerElement_, &numIntPoints_, coords,
       volume, error, &lerr );
+}
+
+//--------------------------------------------------------------------------
+//-------- shape_fcn -------------------------------------------------------
+//--------------------------------------------------------------------------
+void
+TetSCV::shape_fcn(double *shpfc)
+{
+  tet_shape_fcn(numIntPoints_, &intgLoc_[0], shpfc);
+}
+
+//--------------------------------------------------------------------------
+//-------- shifted_shape_fcn -----------------------------------------------
+//--------------------------------------------------------------------------
+void
+TetSCV::shifted_shape_fcn(double *shpfc)
+{
+  tet_shape_fcn(numIntPoints_, &intgLocShift_[0], shpfc);
+}
+
+//--------------------------------------------------------------------------
+//-------- tet_shape_fcn ---------------------------------------------------
+//--------------------------------------------------------------------------
+void
+TetSCV::tet_shape_fcn(
+  const int  &npts,
+  const double *par_coord, 
+  double *shape_fcn)
+{
+  for (int j = 0; j < npts; ++j ) {
+    const int fourj = 4*j;
+    const int k = 3*j;
+    const double xi = par_coord[k];
+    const double eta = par_coord[k+1];
+    const double zeta = par_coord[k+2];
+    shape_fcn[fourj] = 1.0 - xi - eta - zeta;
+    shape_fcn[1 + fourj] = xi;
+    shape_fcn[2 + fourj] = eta;
+    shape_fcn[3 + fourj] = zeta;
+  }
 }
 
 //--------------------------------------------------------------------------
@@ -3225,6 +3302,22 @@ PyrSCV::PyrSCV()
   ipNodeMap_.resize(5);
   ipNodeMap_[0] = 0; ipNodeMap_[1] = 1; ipNodeMap_[2] = 2; ipNodeMap_[3] = 3;
   ipNodeMap_[4] = 4;
+
+  // standard integration location
+  intgLoc_.resize(15);
+  intgLoc_[0]  = -19.0/48.0; intgLoc_[1]  = -19.0/48.0; intgLoc_[2]  = 41.0/240.0;  // vol 0
+  intgLoc_[3]  =  19.0/48.0; intgLoc_[4]  = -19.0/48.0; intgLoc_[5]  = 41.0/240.0;  // vol 1
+  intgLoc_[6]  =  19.0/48.0; intgLoc_[7]  =  19.0/48.0; intgLoc_[8]  = 41.0/240.0;  // vol 2
+  intgLoc_[9]  = -19.0/48.0; intgLoc_[10] =  19.0/48.0; intgLoc_[11] = 41.0/240.0;  // vol 3
+  intgLoc_[12] =   0.0;      intgLoc_[13] =   0.0;      intgLoc_[14] = 0.6 ;        // vol 4
+
+  // shifted
+  intgLocShift_.resize(15);
+  intgLocShift_[0]  = -1.0; intgLocShift_[1]  = -1.0; intgLocShift_[2]  = 0.0;  // vol 0
+  intgLocShift_[3]  =  1.0; intgLocShift_[4]  = -1.0; intgLocShift_[5]  = 0.0;  // vol 1
+  intgLocShift_[6]  =  1.0; intgLocShift_[7]  =  1.0; intgLocShift_[8]  = 0.0;  // vol 2
+  intgLocShift_[9]  = -1.0; intgLocShift_[10] =  1.0; intgLocShift_[11] = 0.0;  // vol 3
+  intgLocShift_[12] =  0.0; intgLocShift_[13] =  0.0; intgLocShift_[14] = 1.0;  // vol 4
 }
 
 //--------------------------------------------------------------------------
@@ -3261,6 +3354,50 @@ void PyrSCV::determinant(
   SIERRA_FORTRAN(pyr_scv_det)
     ( &nelem, &nodesPerElement_, &numIntPoints_, coords,
       volume, error, &lerr );
+}
+
+
+//--------------------------------------------------------------------------
+//-------- shape_fcn -------------------------------------------------------
+//--------------------------------------------------------------------------
+void
+PyrSCV::shape_fcn(double *shpfc)
+{
+  pyr_shape_fcn(numIntPoints_, &intgLoc_[0], shpfc);
+}
+
+//--------------------------------------------------------------------------
+//-------- shifted_shape_fcn -----------------------------------------------
+//--------------------------------------------------------------------------
+void
+PyrSCV::shifted_shape_fcn(double *shpfc)
+{
+  pyr_shape_fcn(numIntPoints_, &intgLocShift_[0], shpfc);
+}
+
+//--------------------------------------------------------------------------
+//-------- pyr_shape_fcn ---------------------------------------------------
+//--------------------------------------------------------------------------
+void
+PyrSCV::pyr_shape_fcn(
+  const int  &npts,
+  const double *par_coord, 
+  double *shape_fcn)
+{
+  const double one  = 1.0;
+  for ( int j = 0; j < npts; ++j ) {
+    const int fivej = 5*j;
+    const int k     = 3*j;
+    const double r    = par_coord[k+0];
+    const double s    = par_coord[k+1];
+    const double t    = par_coord[k+2];
+
+    shape_fcn[0 + fivej] = 0.25*(1.0-r)*(1.0-s)*(one-t);
+    shape_fcn[1 + fivej] = 0.25*(1.0+r)*(1.0-s)*(one-t);
+    shape_fcn[2 + fivej] = 0.25*(1.0+r)*(1.0+s)*(one-t);
+    shape_fcn[3 + fivej] = 0.25*(1.0-r)*(1.0+s)*(one-t);
+    shape_fcn[4 + fivej] = t;
+  }
 }
 
 //--------------------------------------------------------------------------
@@ -3538,6 +3675,26 @@ WedSCV::WedSCV()
   ipNodeMap_.resize(6);
   ipNodeMap_[0] = 0; ipNodeMap_[1] = 1; ipNodeMap_[2] = 2;
   ipNodeMap_[3] = 3; ipNodeMap_[4] = 4; ipNodeMap_[5] = 5;
+
+  // standard integration location
+  intgLoc_.resize(18);
+  const double seven12th = 7.0/12.0;
+  const double five24th = 5.0/24.0;
+  intgLoc_[0]  = five24th;  intgLoc_[1]  = five24th;  intgLoc_[2]  = -0.5; // vol 0
+  intgLoc_[3]  = seven12th; intgLoc_[4]  = five24th;  intgLoc_[5]  = -0.5; // vol 1
+  intgLoc_[6]  = five24th;  intgLoc_[7]  = seven12th; intgLoc_[8]  = -0.5; // vol 2
+  intgLoc_[9]  = five24th;  intgLoc_[10] = five24th;  intgLoc_[11] = 0.5;  // vol 3
+  intgLoc_[12] = seven12th; intgLoc_[13] = five24th;  intgLoc_[14] = 0.5;  // vol 4
+  intgLoc_[15] = five24th;  intgLoc_[16] = seven12th; intgLoc_[17] = 0.5;  // vol 5
+
+  // shifted
+  intgLocShift_.resize(18);
+  intgLocShift_[0]  = 0.0;  intgLocShift_[1]  = 0.0; intgLocShift_[2]  = -1.0; // vol 0
+  intgLocShift_[3]  = 1.0;  intgLocShift_[4]  = 0.0; intgLocShift_[5]  = -1.0; // vol 1
+  intgLocShift_[6]  = 0.0;  intgLocShift_[7]  = 1.0; intgLocShift_[8]  = -1.0; // vol 2
+  intgLocShift_[9]  = 0.0;  intgLocShift_[10] = 0.0; intgLocShift_[11] =  1.0; // vol 3
+  intgLocShift_[12] = 1.0;  intgLocShift_[13] = 0.0; intgLocShift_[14] = 1.0;  // vol 4
+  intgLocShift_[15] = 0.0;  intgLocShift_[16] = 1.0; intgLocShift_[17] = 1.0;  // vol 5
 }
 
 //--------------------------------------------------------------------------
@@ -3574,6 +3731,49 @@ void WedSCV::determinant(
       volume, error, &lerr );
 }
 
+//--------------------------------------------------------------------------
+//-------- shape_fcn -------------------------------------------------------
+//--------------------------------------------------------------------------
+void
+WedSCV::shape_fcn(double *shpfc)
+{
+  wedge_shape_fcn(numIntPoints_, &intgLoc_[0], shpfc);
+}
+
+//--------------------------------------------------------------------------
+//-------- shifted_shape_fcn -----------------------------------------------
+//--------------------------------------------------------------------------
+void
+WedSCV::shifted_shape_fcn(double *shpfc)
+{
+  wedge_shape_fcn(numIntPoints_, &intgLocShift_[0], shpfc);
+}
+
+
+//--------------------------------------------------------------------------
+//-------- wedge_shape_fcn -------------------------------------------------
+//--------------------------------------------------------------------------
+void
+WedSCV::wedge_shape_fcn(
+  const int  &npts,
+  const double *isoParCoord, 
+  double *shape_fcn)
+{
+  for (int j = 0; j < npts; ++j ) {
+    int sixj = 6 * j;
+    int k    = 3 * j;
+    double r    = isoParCoord[k];
+    double s    = isoParCoord[k + 1];
+    double t    = 1.0 - r - s;
+    double xi   = isoParCoord[k + 2];
+    shape_fcn[    sixj] = 0.5 * t * (1.0 - xi);
+    shape_fcn[1 + sixj] = 0.5 * r * (1.0 - xi);
+    shape_fcn[2 + sixj] = 0.5 * s * (1.0 - xi);
+    shape_fcn[3 + sixj] = 0.5 * t * (1.0 + xi);
+    shape_fcn[4 + sixj] = 0.5 * r * (1.0 + xi);
+    shape_fcn[5 + sixj] = 0.5 * s * (1.0 + xi);
+  }
+}
 
 //--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
@@ -3824,7 +4024,8 @@ void WedSCS::wedge_derivative(
 //--------------------------------------------------------------------------
 //-------- face_grad_op ----------------------------------------------------
 //--------------------------------------------------------------------------
-void WedSCS::face_grad_op(
+void 
+WedSCS::face_grad_op(
   const int nelem,
   const int face_ordinal,
   const double *coords,
@@ -3949,7 +4150,7 @@ WedSCS::isInElement(
   // ------------------------------------------------------------------
 
   // Translate element so that (x,y,z) coordinates of first node are (0,0,0)
-  
+
   double x[] = {0.0,
                 elemNodalCoord[ 1] - elemNodalCoord[ 0],
                 elemNodalCoord[ 2] - elemNodalCoord[ 0],
@@ -3968,7 +4169,7 @@ WedSCS::isInElement(
                 elemNodalCoord[15] - elemNodalCoord[12],
                 elemNodalCoord[16] - elemNodalCoord[12],
                 elemNodalCoord[17] - elemNodalCoord[12] };
-  
+
   // (xp,yp,zp) is the point to be mapped into (r,s,xi) coordinate system.
   // This point must also be translated as above.
 
@@ -4088,7 +4289,6 @@ WedSCS::isInElement(
 
     dist = parametric_distance(xx);
   }
-
   return dist;
 }
 
@@ -4172,6 +4372,90 @@ WedSCS::parametric_distance(const std::vector<double> &x)
 }
 
 //--------------------------------------------------------------------------
+//-------- general_face_grad_op --------------------------------------------
+//--------------------------------------------------------------------------
+void 
+WedSCS::general_face_grad_op(
+  const int face_ordinal,
+  const double *isoParCoord,
+  const double *coords,
+  double *gradop,
+  double *det_j,
+  double *error)
+{
+  int lerr = 0;
+  const int nface = 1;
+  double dpsi[18], grad[18];
+      
+  wedge_derivative(nface, &isoParCoord[0], dpsi);
+      
+  SIERRA_FORTRAN(wed_gradient_operator) 
+    ( &nface,
+      &nodesPerElement_,
+      &nface,
+      dpsi,
+      &coords[0], grad, &det_j[0], error, &lerr );
+      
+  if ( lerr )
+    std::cout << "problem with EwedSCS::general_face_grad" << std::endl;
+  
+  for ( int j=0; j<18; ++j) {
+    gradop[j] = grad[j];
+  }  
+}
+
+//--------------------------------------------------------------------------
+//-------- sidePcoords_to_elemPcoords --------------------------------------
+//--------------------------------------------------------------------------
+void 
+WedSCS::sidePcoords_to_elemPcoords(
+  const int & side_ordinal,
+  const int & npoints,
+  const double *side_pcoords,
+  double *elem_pcoords)
+{
+  switch (side_ordinal) {
+  case 0:
+    for (int i=0; i<npoints; i++) {//face0:quad: (x,y) -> (0.5*(1 + x),0,y)
+      elem_pcoords[i*3+0] = 0.5*(1.0+side_pcoords[2*i+0]);
+      elem_pcoords[i*3+1] = 0.0;
+      elem_pcoords[i*3+2] = side_pcoords[2*i+1];
+    }
+    break;
+  case 1:
+    for (int i=0; i<npoints; i++) {//face1:quad: (x,y) -> (0.5*(1-y),0.5*(1 + y),x)
+      elem_pcoords[i*3+0] = 0.5*(1.0-side_pcoords[2*i+1]);
+      elem_pcoords[i*3+1] = 0.5*(1.0+side_pcoords[2*i+1]);
+      elem_pcoords[i*3+2] = side_pcoords[2*i+0];
+    }
+    break;
+  case 2:
+    for (int i=0; i<npoints; i++) {//face2:quad: (x,y) -> (0,0.5*(1 + x),y)
+      elem_pcoords[i*3+0] = 0.0;
+      elem_pcoords[i*3+1] = 0.5*(1.0+side_pcoords[2*i+0]);
+      elem_pcoords[i*3+2] = side_pcoords[2*i+1];
+    }
+    break;
+  case 3:
+    for (int i=0; i<npoints; i++) {//face3:tri: (x,y) -> (x,y,-1)
+      elem_pcoords[i*3+0] = side_pcoords[2*i+0];
+      elem_pcoords[i*3+1] = side_pcoords[2*i+1];
+      elem_pcoords[i*3+2] = -1.0;
+    }
+    break;
+  case 4:
+    for (int i=0; i<npoints; i++) {//face4:tri: (x,y) -> (x,y,+1 )
+      elem_pcoords[i*3+0] = side_pcoords[2*i+0];
+      elem_pcoords[i*3+1] = side_pcoords[2*i+1];
+      elem_pcoords[i*3+2] = 1.0;
+    }
+    break;
+  default:
+    throw std::runtime_error("WedSCS::sidePcoords_to_elemPcoords invalid ordinal");
+  }
+}
+
+//--------------------------------------------------------------------------
 //-------- constructor -----------------------------------------------------
 //--------------------------------------------------------------------------
 Quad2DSCV::Quad2DSCV()
@@ -4196,7 +4480,7 @@ Quad2DSCV::Quad2DSCV()
   intgLocShift_.resize(8);    
   intgLocShift_[0]  = -0.50; intgLocShift_[1]  = -0.50; 
   intgLocShift_[2]  = +0.50; intgLocShift_[3]  = -0.50; 
-  intgLocShift_[4]  = +0.05; intgLocShift_[5]  = +0.50; 
+  intgLocShift_[4]  = +0.50; intgLocShift_[5]  = +0.50; 
   intgLocShift_[6]  = -0.50; intgLocShift_[7]  = +0.50; 
 }
 
@@ -5837,6 +6121,18 @@ Tri2DSCV::Tri2DSCV()
   // define ip node mappings
   ipNodeMap_.resize(3);
   ipNodeMap_[0] = 0; ipNodeMap_[1] = 1; ipNodeMap_[2] = 2;
+
+  intgLoc_ = {
+      5.0/24.0, 5.0/24.0,
+      7.0/12.0, 5.0/24.0,
+      5.0/24.0, 7.0/12.0
+  };
+
+  intgLocShift_ = {
+      0.0,  0.0,
+      1.0,  0.0,
+      0.0,  1.0
+  };
 }
 
 //--------------------------------------------------------------------------
@@ -5856,6 +6152,44 @@ Tri2DSCV::ipNodeMap(
 {
   // define scv->node mappings
   return &ipNodeMap_[0];
+}
+
+//--------------------------------------------------------------------------
+//-------- shape_fcn -------------------------------------------------------
+//--------------------------------------------------------------------------
+void
+Tri2DSCV::shape_fcn(double *shpfc)
+{
+  tri_shape_fcn(numIntPoints_, &intgLoc_[0], shpfc);
+}
+
+//--------------------------------------------------------------------------
+//-------- shifted_shape_fcn -----------------------------------------------
+//--------------------------------------------------------------------------
+void
+Tri2DSCV::shifted_shape_fcn(double *shpfc)
+{
+  tri_shape_fcn(numIntPoints_, &intgLocShift_[0], shpfc);
+}
+
+//--------------------------------------------------------------------------
+//-------- tri_shape_fcn ---------------------------------------------------
+//--------------------------------------------------------------------------
+void
+Tri2DSCV::tri_shape_fcn(
+  const int  &npts,
+  const double *isoParCoord,
+  double *shape_fcn)
+{
+  for (int j = 0; j < npts; ++j ) {
+    const int threej = 3*j;
+    const int k = 2*j;
+    const double xi = isoParCoord[k];
+    const double eta = isoParCoord[k+1];
+    shape_fcn[threej] = 1.0 - xi - eta;
+    shape_fcn[1 + threej] = xi;
+    shape_fcn[2 + threej] = eta;
+  }
 }
 
 //--------------------------------------------------------------------------

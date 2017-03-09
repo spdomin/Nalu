@@ -6,8 +6,8 @@
 /*------------------------------------------------------------------------*/
 
 
-#ifndef HeatCondFemElemSuppAlg_h
-#define HeatCondFemElemSuppAlg_h
+#ifndef MomentumMassElemSuppAlgDep_h
+#define MomentumMassElemSuppAlgDep_h
 
 #include <SupplementalAlgorithm.h>
 #include <FieldTypeDef.h>
@@ -20,16 +20,16 @@ namespace nalu{
 
 class Realm;
 class MasterElement;
-class Hex8FEM;
 
-class HeatCondFemElemSuppAlg : public SupplementalAlgorithm
+class MomentumMassElemSuppAlgDep : public SupplementalAlgorithm
 {
 public:
 
-  HeatCondFemElemSuppAlg(
-    Realm &realm);
+  MomentumMassElemSuppAlgDep(
+    Realm &realm,
+    const bool lumpedMass);
 
-  virtual ~HeatCondFemElemSuppAlg() {}
+  virtual ~MomentumMassElemSuppAlgDep() {}
 
   virtual void setup();
 
@@ -46,25 +46,38 @@ public:
   
   const stk::mesh::BulkData *bulkData_;
 
-  ScalarFieldType *temperature_;
-  ScalarFieldType *thermalCond_;
+  VectorFieldType *velocityNm1_;
+  VectorFieldType *velocityN_;
+  VectorFieldType *velocityNp1_;
+  ScalarFieldType *densityNm1_;
+  ScalarFieldType *densityN_;
+  ScalarFieldType *densityNp1_;
+  VectorFieldType *Gjp_;
   VectorFieldType *coordinates_;
 
-  // master element
-  Hex8FEM * meFEM_;
-  double *ipWeight_;
+  double dt_;
+  double gamma1_;
+  double gamma2_;
+  double gamma3_;
   const int nDim_;
+  const bool lumpedMass_;
 
-  // scratch space; geometry
-  std::vector<double> ws_dndx_;
-  std::vector<double> ws_deriv_;
-  std::vector<double> ws_det_j_;
+  // scratch space
+  std::vector<double> uNm1Scv_;
+  std::vector<double> uNScv_;
+  std::vector<double> uNp1Scv_;
+  std::vector<double> GjpScv_;
+
   std::vector<double> ws_shape_function_;
-
-  // scratch space; fields
-  std::vector<double> ws_temperature_;
-  std::vector<double> ws_thermalCond_;
+  std::vector<double> ws_uNm1_;
+  std::vector<double> ws_uN_;
+  std::vector<double> ws_uNp1_;
+  std::vector<double> ws_Gjp_;
+  std::vector<double> ws_rhoNm1_;
+  std::vector<double> ws_rhoN_;
+  std::vector<double> ws_rhoNp1_;
   std::vector<double> ws_coordinates_;
+  std::vector<double> ws_scv_volume_;
 };
 
 } // namespace nalu

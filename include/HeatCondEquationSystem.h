@@ -32,7 +32,6 @@ class ProjectedNodalGradientEquationSystem;
 class HeatCondEquationSystem : public EquationSystem {
 
 public:
-
   HeatCondEquationSystem(
     EquationSystems& equationSystems);
   virtual ~HeatCondEquationSystem();
@@ -82,7 +81,8 @@ public:
     EquationSystem::load(node);
     get_if_present(node, "use_collocation", collocationForViscousTerms_, false);
   }
-  
+
+
   // allow equation system to manage a projected nodal gradient
   const bool managePNG_;
 
@@ -105,6 +105,7 @@ public:
   bool isInit_;
   bool collocationForViscousTerms_;
   ProjectedNodalGradientEquationSystem *projectedNodalGradEqs_;
+
 };
 
 } // namespace nalu

@@ -200,6 +200,9 @@ public:
 
   void shape_fcn(
     double *shpfc);
+
+  void shifted_shape_fcn(
+    double *shpfc);
 };
 
 // Hex 8 subcontrol surface
@@ -501,6 +504,17 @@ public:
     const double *coords,
     double *areav,
     double * error );
+
+  void shape_fcn(
+    double *shpfc);
+
+  void shifted_shape_fcn(
+    double *shpfc);
+  
+  void tet_shape_fcn(
+    const int &npts,
+    const double *par_coord, 
+    double* shape_fcn);
 };
 
 // Tet 4 subcontrol surface
@@ -617,6 +631,17 @@ public:
     const double *coords,
     double *areav,
     double * error );
+
+  void shape_fcn(
+    double *shpfc);
+
+  void shifted_shape_fcn(
+    double *shpfc);
+  
+  void pyr_shape_fcn(
+    const int &npts,
+    const double *par_coord, 
+    double* shape_fcn);
 };
 
 // Pyramid 5 subcontrol surface
@@ -691,6 +716,17 @@ public:
     const double *coords,
     double *areav,
     double * error );
+
+  void shape_fcn(
+    double *shpfc);
+
+  void shifted_shape_fcn(
+    double *shpfc);
+
+  void wedge_shape_fcn(
+    const int &npts,
+    const double *par_coord, 
+    double* shape_fcn);
 };
 
 // Wedge 6 subcontrol surface
@@ -772,6 +808,20 @@ public:
     const int &npts,
     const double *par_coord, 
     double* shape_fcn);
+
+  void general_face_grad_op(
+    const int face_ordinal,
+    const double *isoParCoord,
+    const double *coords,
+    double *gradop,
+    double *det_j,
+    double * error );
+
+  void sidePcoords_to_elemPcoords(
+    const int & side_ordinal,
+    const int & npoints,
+    const double *side_pcoords,
+    double *elem_pcoords);
 
   // helper functions to isInElement
   double parametric_distance( const double X, const double Y);
@@ -1080,6 +1130,17 @@ public:
     const double *coords,
     double *areav,
     double * error );
+
+  void shape_fcn(
+    double *shpfc);
+
+  void shifted_shape_fcn(
+    double *shpfc);
+
+  void tri_shape_fcn(
+    const int &npts,
+    const double *par_coord,
+    double* shape_fcn);
 
 };
 

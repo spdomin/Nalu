@@ -20,6 +20,7 @@
 #include <LinearSystem.h>
 #include <ConstantAuxFunction.h>
 #include <Enums.h>
+#include <SupplementalAlgorithmBuilderLog.h>
 
 // overset
 #include <overset/AssembleOversetSolverConstraintAlgorithm.h>
@@ -36,10 +37,12 @@ namespace nalu{
 
 EquationSystem::EquationSystem(
   EquationSystems& eqSystems,
-  const std::string name) 
+  const std::string name,
+  const std::string eqnTypeName)
   : equationSystems_(eqSystems),
     realm_(eqSystems.realm_),
     name_(name),
+    eqnTypeName_(eqnTypeName),
     maxIterations_(1),
     convergenceTolerance_(1.0),
     solverAlgDriver_(new SolverAlgorithmDriver(realm_)),
@@ -428,6 +431,78 @@ EquationSystem::create_peclet_function(
   }
   return pecletFunction;
 }
+
+//--------------------------------------------------------------------------
+void
+EquationSystem::report_invalid_supp_alg_names()
+{
+  bool noInvalidNamesFound = SuppAlgBuilderLog::self().print_invalid_supp_alg_names(
+    eqnTypeName_, realm_.solutionOptions_->elemSrcTermsMap_
+  );
+
+  if (!noInvalidNamesFound) {
+    SuppAlgBuilderLog::self().print_valid_supp_alg_names(eqnTypeName_);
+
+    std::string msg =
+      "Invalid supplemental algorithms name(s) for " + eqnTypeName_ + ". See log for details.";
+
+    throw std::runtime_error(msg);
+  }
+}
+//--------------------------------------------------------------------------
+void
+EquationSystem::report_built_supp_alg_names()
+{
+  SuppAlgBuilderLog::self().print_built_supp_alg_names(eqnTypeName_);
+}
+//--------------------------------------------------------------------------
+bool
+EquationSystem::supp_alg_is_requested(std::string suppAlgName)
+{
+  const auto& nameMap = realm_.solutionOptions_->elemSrcTermsMap_;
+  auto it = nameMap.find(eqnTypeName_);
+  if (it == nameMap.end()) {
+    return false;
+  }
+  const std::vector<std::string>& nameVec = it->second;
+
+  if (std::find(nameVec.begin(), nameVec.end(), suppAlgName) == nameVec.end()) {
+    return false;
+  }
+  return true;
+}
+
+bool
+EquationSystem::supp_alg_is_requested(std::vector<std::string> names)
+{
+  const auto& nameMap = realm_.solutionOptions_->elemSrcTermsMap_;
+  auto it = nameMap.find(eqnTypeName_);
+
+  if (it == nameMap.end()) {
+    return false;
+  }
+
+  const std::vector<std::string>& nameVec = it->second;
+
+  bool found = false;
+  for(auto algName: names) {
+    if (std::find(nameVec.begin(), nameVec.end(), algName) != nameVec.end()) {
+      found = true;
+      break;
+    }
+  }
+  return found;
+}
+
+
+bool
+EquationSystem::nodal_src_is_requested()
+{
+  auto isrc = realm_.solutionOptions_->srcTermsMap_.find(eqnTypeName_);
+
+  return (isrc != realm_.solutionOptions_->srcTermsMap_.end());
+}
+
 
 } // namespace nalu
 } // namespace Sierra
